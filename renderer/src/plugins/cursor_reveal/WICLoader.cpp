@@ -47,7 +47,7 @@ bool WICLoader::LoadTexture(
     if (origWidth > (UINT)maxWidth || origHeight > (UINT)maxHeight) {
         float scaleX = (float)maxWidth / (float)origWidth;
         float scaleY = (float)maxHeight / (float)origHeight;
-        float scale = std::min(scaleX, scaleY);
+        float scale = (scaleX < scaleY) ? scaleX : scaleY;
         targetWidth = (UINT)(origWidth * scale);
         targetHeight = (UINT)(origHeight * scale);
     }

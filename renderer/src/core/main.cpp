@@ -384,8 +384,8 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE /*hPrevInstance*/, LPSTR /*lpC
     }
     
     if (activePlugin && activePlugin->OnWallpaperChanged) {
-        std::string pathA = exeDir + "\\..\\..\\wallpapers\\Test4K.jpg";
-        std::string pathB = exeDir + "\\..\\..\\wallpapers\\TestSmall.jpg";
+        std::string pathA = exeDir + "\\..\\..\\..\\wallpapers\\Witcher.jpg";
+        std::string pathB = exeDir + "\\..\\..\\..\\wallpapers\\frieren-magical.jpeg";
         WallpaperLayers layers = { pathA.c_str(), pathB.c_str() };
         activePlugin->OnWallpaperChanged(&layers);
     }

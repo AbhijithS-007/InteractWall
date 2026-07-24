@@ -1,0 +1,31 @@
+# Build directories
+build/
+out/
+bin/
+obj/
+
+# Visual Studio / CMake
+.vs/
+*.sln
+*.vcxproj
+*.vcxproj.user
+*.vcxproj.filters
+CMakeCache.txt
+CMakeFiles/
+CMakeScripts/
+Makefile
+cmake_install.cmake
+install_manifest.txt
+
+# Editor / IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Wallpapers (exclude test images to avoid uploading large binary assets)
+wallpapers/
+
+# OS generated files
+Thumbs.db
+.DS_Store

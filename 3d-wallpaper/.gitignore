@@ -1,0 +1,14 @@
+build/
+node_modules/
+.vs/
+*.exe
+*.dll
+*.pdb
+*.obj
+*.o
+*.cso
+*.tlog
+*.idb
+*.ilk
+*.suo
+*.user

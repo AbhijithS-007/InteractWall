@@ -1,0 +1,64 @@
+{
+  "version": 1,
+  "name": "My Composed Scene",
+  "background": {
+    "type": "color",
+    "value": "#000000",
+    "fit": "cover"
+  },
+  "camera": {
+    "fov": 45,
+    "sensitivity": 1.15,
+    "maxRotationOffset": 16
+  },
+  "rendering": {
+    "lightingEnabled": true
+  },
+  "lighting": {
+    "ambientColor": "#333333",
+    "directionalLights": [
+      {
+        "color": "#ffffff",
+        "direction": [
+          0.2987527198434235,
+          -0.8535791995526401,
+          -0.42678959977631986
+        ],
+        "intensity": 1
+      },
+      {
+        "color": "#88bbff",
+        "direction": [
+          0.5,
+          0.3,
+          -0.5
+        ],
+        "intensity": 0.3
+      }
+    ],
+    "exposure": 2.8
+  },
+  "objects": [
+    {
+      "id": "obj_1",
+      "modelPath": "models/911.glb",
+      "position": [
+        0.069,
+        -0.753,
+        -0.098
+      ],
+      "rotation": [
+        9.708,
+        83.163,
+        -9.814
+      ],
+      "scale": [
+        2.221,
+        2.221,
+        2.221
+      ],
+      "followMouse": true,
+      "rotationMultiplier": 0.1
+    }
+  ]
+}

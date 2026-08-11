@@ -4,14 +4,26 @@
 #include <fstream>
 #include <vector>
 #include <string>
+#include <chrono>
+#include <deque>
 
 static RendererContext* g_ctx = nullptr;
+static std::vector<std::pair<float, float>> g_mousePoints;
+
+struct HistoryPoint {
+    float x, y;
+    float timeAdded;
+};
+static std::deque<HistoryPoint> g_historyPoints;
+static float g_currentTime = 0.0f;
+static float g_lastFrameDelta = 0.0f;
 
 struct Settings {
-    float brushSize = 250.0f;
-    float brushHardness = 0.5f;
-    float fadeSpeed = 0.02f;
+    float brushSize = 160.0f;
+    float brushHardness = 0.2f; // Lower = softer edge
+    float fadeSpeed = 0.035f;   // Lower = lasts longer
     float trailLength = 1.0f;
+    bool fadeWhenResting = true;
 } g_settings;
 
 // D3D Resources
@@ -39,10 +51,11 @@ static ID3D11Buffer* g_FadeCB = nullptr;
 
 __declspec(align(16))
 struct BrushConstantBuffer {
-    float mouseX;
-    float mouseY;
+    float packedPoints[32]; // 16 float2s
+    int numPoints;
     float brushSize;
     float brushHardness;
+    float padding;
 };
 
 __declspec(align(16))
@@ -51,7 +64,7 @@ struct FadeConstantBuffer {
     float padding[3];
 };
 
-static BrushConstantBuffer g_brushData = { -1000.0f, -1000.0f, 250.0f, 0.5f };
+static BrushConstantBuffer g_brushData = {};
 
 // Helper to read compiled shader
 std::vector<char> ReadFileContent(const std::string& filename) {
@@ -75,10 +88,10 @@ void CR_Initialize(RendererContext* ctx) {
     std::string pluginDir = exeDir + "\\plugins\\";
 
     // Load Shaders
-    auto vsData = ReadFileContent(pluginDir + "FullscreenVS.cso");
-    auto compData = ReadFileContent(pluginDir + "CompositePS.cso");
-    auto brushData = ReadFileContent(pluginDir + "BrushPS.cso");
-    auto fadeData = ReadFileContent(pluginDir + "FadePS.cso");
+    auto vsData = ReadFileContent(pluginDir + "CR_FullscreenVS.cso");
+    auto compData = ReadFileContent(pluginDir + "CR_CompositePS.cso");
+    auto brushData = ReadFileContent(pluginDir + "CR_BrushPS.cso");
+    auto fadeData = ReadFileContent(pluginDir + "CR_FadePS.cso");
 
     if (vsData.empty() || compData.empty() || brushData.empty() || fadeData.empty()) {
         std::cout << "[CursorReveal] Failed to load shaders.\n";
@@ -149,52 +162,151 @@ void CR_Initialize(RendererContext* ctx) {
     }
 }
 
-void CR_Update(float deltaTime) { }
+void CR_Update(float deltaTime) {
+    g_currentTime += deltaTime;
+    g_lastFrameDelta = deltaTime;
+    
+#ifdef _DEBUG
+    static float s_debugTimer = 0.0f;
+    s_debugTimer += deltaTime;
+    if (s_debugTimer >= 1.0f) {
+        s_debugTimer = 0.0f;
+        std::cout << "[CursorReveal] LIVE SETTINGS -> "
+                  << "Trail Length: " << g_settings.trailLength << "s, "
+                  << "Fade Speed: " << g_settings.fadeSpeed << " (per frame base)\n";
+    }
+#endif
+}
 
 void CR_Render() {
     if (!g_ctx || !g_ctx->context || !g_FullscreenVS) return;
 
     // 1. Setup Viewport to processing resolution
-    D3D11_VIEWPORT vp = {};
-    vp.Width = (float)g_ctx->processingWidth;
-    vp.Height = (float)g_ctx->processingHeight;
-    vp.MinDepth = 0.0f;
-    vp.MaxDepth = 1.0f;
-    g_ctx->context->RSSetViewports(1, &vp);
+    D3D11_VIEWPORT maskVp = {};
+    maskVp.Width = (float)g_ctx->processingWidth;
+    maskVp.Height = (float)g_ctx->processingHeight;
+    maskVp.MinDepth = 0.0f;
+    maskVp.MaxDepth = 1.0f;
+    g_ctx->context->RSSetViewports(1, &maskVp);
 
-    // Bind common
+    // Explicitly unbind all SRVs before our pass begins to ensure zero state bleeding
+    ID3D11ShaderResourceView* nullSRVs[8] = {nullptr};
+    g_ctx->context->PSSetShaderResources(0, 8, nullSRVs);
+
+    // Bind common state
+    g_ctx->context->IASetInputLayout(nullptr);
     g_ctx->context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
     g_ctx->context->VSSetShader(g_FullscreenVS, nullptr, 0);
-
-    // 2. FADE PASS (Subtractive)
-    g_ctx->context->OMSetRenderTargets(1, &g_MaskRTV, nullptr);
     float blendFactor[4] = {0,0,0,0};
     g_ctx->context->OMSetBlendState(g_BlendSubtractive, blendFactor, 0xffffffff);
     g_ctx->context->PSSetShader(g_FadePS, nullptr, 0);
-    
-    D3D11_MAPPED_SUBRESOURCE mapped;
-    if (SUCCEEDED(g_ctx->context->Map(g_FadeCB, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped))) {
-        FadeConstantBuffer* fc = (FadeConstantBuffer*)mapped.pData;
-        fc->fadeAmount = g_settings.fadeSpeed;
-        g_ctx->context->Unmap(g_FadeCB, 0);
+
+    // 2. FADE PASS OR CLEAR
+    if (g_settings.trailLength <= 0.001f) {
+        float clearColor[4] = {0,0,0,0};
+        g_ctx->context->ClearRenderTargetView(g_MaskRTV, clearColor);
+    } else {
+        g_ctx->context->OMSetRenderTargets(1, &g_MaskRTV, nullptr);
+        
+        D3D11_MAPPED_SUBRESOURCE mapped;
+        if (SUCCEEDED(g_ctx->context->Map(g_FadeCB, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped))) {
+            FadeConstantBuffer* fc = (FadeConstantBuffer*)mapped.pData;
+            fc->fadeAmount = g_settings.fadeSpeed * g_lastFrameDelta * 60.0f;
+            g_ctx->context->Unmap(g_FadeCB, 0);
+        }
+        g_ctx->context->PSSetConstantBuffers(0, 1, &g_FadeCB);
+        g_ctx->context->Draw(3, 0);
     }
-    g_ctx->context->PSSetConstantBuffers(0, 1, &g_FadeCB);
-    g_ctx->context->Draw(3, 0);
 
     // 3. BRUSH PASS (Additive)
+    g_ctx->context->OMSetRenderTargets(1, &g_MaskRTV, nullptr);
     g_ctx->context->OMSetBlendState(g_BlendAdditive, blendFactor, 0xffffffff);
     g_ctx->context->PSSetShader(g_BrushPS, nullptr, 0);
     
-    if (SUCCEEDED(g_ctx->context->Map(g_BrushCB, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped))) {
-        BrushConstantBuffer* bc = (BrushConstantBuffer*)mapped.pData;
-        *bc = g_brushData;
-        g_ctx->context->Unmap(g_BrushCB, 0);
+    static float lastRenderedX = -1000.0f;
+    static float lastRenderedY = -1000.0f;
+    static auto lastMouseMoveTime = std::chrono::steady_clock::now();
+    
+    if (!g_mousePoints.empty()) {
+        lastMouseMoveTime = std::chrono::steady_clock::now();
     }
-    g_ctx->context->PSSetConstantBuffers(0, 1, &g_BrushCB);
-    g_ctx->context->Draw(3, 0);
+    float stationarySeconds = std::chrono::duration<float>(std::chrono::steady_clock::now() - lastMouseMoveTime).count();
+    bool isResting = (stationarySeconds > 0.05f);
+
+    for (const auto& p : g_mousePoints) {
+        g_historyPoints.push_back({p.first, p.second, g_currentTime});
+    }
+    g_mousePoints.clear();
+
+    // Remove points older than trailLength
+    while (!g_historyPoints.empty() && (g_currentTime - g_historyPoints.front().timeAdded) > g_settings.trailLength) {
+        g_historyPoints.pop_front();
+    }
+
+    std::vector<std::pair<float, float>> strokePoints;
+    for (const auto& hp : g_historyPoints) {
+        strokePoints.push_back({hp.x, hp.y});
+    }
+
+    if (!g_historyPoints.empty()) {
+        lastRenderedX = g_historyPoints.back().x;
+        lastRenderedY = g_historyPoints.back().y;
+    }
+
+    if (!g_settings.fadeWhenResting && lastRenderedX > -999.0f) {
+        strokePoints.push_back({lastRenderedX, lastRenderedY});
+    }
+
+    if (strokePoints.size() == 1) {
+        strokePoints.push_back(strokePoints[0]); // single point becomes a zero-length segment
+    }
+
+    if (!strokePoints.empty()) {
+        int pointsLeft = strokePoints.size();
+        int offset = 0;
+        float scaleY = (float)g_ctx->processingHeight / GetSystemMetrics(SM_CYSCREEN);
+
+        while (pointsLeft > 1) {
+            int pointsToDraw = (std::min)(pointsLeft, 16);
+            
+            D3D11_MAPPED_SUBRESOURCE mapped;
+            if (SUCCEEDED(g_ctx->context->Map(g_BrushCB, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped))) {
+                BrushConstantBuffer* bc = (BrushConstantBuffer*)mapped.pData;
+                memset(bc, 0, sizeof(BrushConstantBuffer));
+                
+                bc->numPoints = pointsToDraw;
+                for (int i = 0; i < pointsToDraw; ++i) {
+                    bc->packedPoints[i * 2] = strokePoints[offset + i].first;
+                    bc->packedPoints[i * 2 + 1] = strokePoints[offset + i].second;
+                }
+                bc->brushSize = g_settings.brushSize * scaleY;
+                bc->brushHardness = g_settings.brushHardness;
+                
+                g_ctx->context->Unmap(g_BrushCB, 0);
+            }
+            g_ctx->context->PSSetConstantBuffers(0, 1, &g_BrushCB);
+            
+            if (g_settings.fadeWhenResting && isResting) {
+                // Do not draw, let it fade out
+            } else {
+                g_ctx->context->Draw(3, 0);
+            }
+
+            offset += (pointsToDraw - 1);
+            pointsLeft -= (pointsToDraw - 1);
+        }
+    }
 
     // 4. COMPOSITE PASS (Opaque to Screen)
     if (g_ctx->mainRenderTargetView) {
+        // Change viewport to native screen resolution for final output
+        D3D11_VIEWPORT screenVp = {};
+        screenVp.Width = (float)g_ctx->screenWidth;
+        screenVp.Height = (float)g_ctx->screenHeight;
+        screenVp.MinDepth = 0.0f;
+        screenVp.MaxDepth = 1.0f;
+        g_ctx->context->RSSetViewports(1, &screenVp);
+
         g_ctx->context->OMSetRenderTargets(1, &g_ctx->mainRenderTargetView, nullptr);
         g_ctx->context->OMSetBlendState(g_BlendOpaque, blendFactor, 0xffffffff);
         g_ctx->context->PSSetShader(g_CompositePS, nullptr, 0);
@@ -212,23 +324,34 @@ void CR_Render() {
 }
 
 void CR_Shutdown() {
-    if (g_FullscreenVS) g_FullscreenVS->Release();
-    if (g_CompositePS) g_CompositePS->Release();
-    if (g_BrushPS) g_BrushPS->Release();
-    if (g_FadePS) g_FadePS->Release();
-    if (g_MaskTexture) g_MaskTexture->Release();
-    if (g_MaskRTV) g_MaskRTV->Release();
-    if (g_MaskSRV) g_MaskSRV->Release();
-    if (g_TexA) g_TexA->Release();
-    if (g_SRVA) g_SRVA->Release();
-    if (g_TexB) g_TexB->Release();
-    if (g_SRVB) g_SRVB->Release();
-    if (g_Sampler) g_Sampler->Release();
-    if (g_BlendAdditive) g_BlendAdditive->Release();
-    if (g_BlendSubtractive) g_BlendSubtractive->Release();
-    if (g_BlendOpaque) g_BlendOpaque->Release();
-    if (g_BrushCB) g_BrushCB->Release();
-    if (g_FadeCB) g_FadeCB->Release();
+    if (g_FullscreenVS) { g_FullscreenVS->Release(); g_FullscreenVS = nullptr; }
+    if (g_CompositePS) { g_CompositePS->Release(); g_CompositePS = nullptr; }
+    if (g_BrushPS) { g_BrushPS->Release(); g_BrushPS = nullptr; }
+    if (g_FadePS) { g_FadePS->Release(); g_FadePS = nullptr; }
+    if (g_MaskTexture) { g_MaskTexture->Release(); g_MaskTexture = nullptr; }
+    if (g_MaskRTV) { g_MaskRTV->Release(); g_MaskRTV = nullptr; }
+    if (g_MaskSRV) { g_MaskSRV->Release(); g_MaskSRV = nullptr; }
+    if (g_TexA) { g_TexA->Release(); g_TexA = nullptr; }
+    if (g_SRVA) { g_SRVA->Release(); g_SRVA = nullptr; }
+    if (g_TexB) { g_TexB->Release(); g_TexB = nullptr; }
+    if (g_SRVB) { g_SRVB->Release(); g_SRVB = nullptr; }
+    if (g_Sampler) { g_Sampler->Release(); g_Sampler = nullptr; }
+    if (g_BlendAdditive) { g_BlendAdditive->Release(); g_BlendAdditive = nullptr; }
+    if (g_BlendSubtractive) { g_BlendSubtractive->Release(); g_BlendSubtractive = nullptr; }
+    if (g_BlendOpaque) { g_BlendOpaque->Release(); g_BlendOpaque = nullptr; }
+    if (g_BrushCB) { g_BrushCB->Release(); g_BrushCB = nullptr; }
+    if (g_FadeCB) { g_FadeCB->Release(); g_FadeCB = nullptr; }
+    
+    g_mousePoints.clear();
+    g_historyPoints.clear();
+    g_currentTime = 0.0f;
+    
+    // Explicit safety net: Ensure these slots are completely cleared from the GPU
+    if (g_ctx && g_ctx->context) {
+        ID3D11ShaderResourceView* nullSRVs[8] = {nullptr};
+        g_ctx->context->PSSetShaderResources(0, 8, nullSRVs);
+    }
+    
     std::cout << "[CursorReveal] Shutdown complete.\n";
 }
 
@@ -236,10 +359,11 @@ void CR_OnMouseMove(int x, int y) {
     if (!g_ctx) return;
     float scaleX = (float)g_ctx->processingWidth / GetSystemMetrics(SM_CXSCREEN);
     float scaleY = (float)g_ctx->processingHeight / GetSystemMetrics(SM_CYSCREEN);
-    g_brushData.mouseX = x * scaleX;
-    g_brushData.mouseY = y * scaleY;
-    g_brushData.brushSize = g_settings.brushSize;
-    g_brushData.brushHardness = g_settings.brushHardness;
+    
+    float mappedX = x * scaleX;
+    float mappedY = y * scaleY;
+    
+    g_mousePoints.push_back({mappedX, mappedY});
 }
 
 void CR_OnWallpaperChanged(const WallpaperLayers* layers) {
@@ -264,6 +388,15 @@ void CR_OnQualityTierChanged(const QualityTier* tier) {}
 void CR_LoadSettings(const char* jsonPath) {}
 void CR_SaveSettings(const char* jsonPath) {}
 
+void CR_OnSettingChanged(const char* key, float value) {
+    std::string k(key);
+    if (k == "brushSize") g_settings.brushSize = value;
+    else if (k == "brushHardness") g_settings.brushHardness = value;
+    else if (k == "fadeSpeed") g_settings.fadeSpeed = value;
+    else if (k == "trailLength") g_settings.trailLength = value;
+    else if (k == "fadeWhenResting") g_settings.fadeWhenResting = (value > 0.5f);
+}
+
 static IEffectPlugin g_plugin = {
     CR_Initialize,
     CR_Update,
@@ -274,7 +407,8 @@ static IEffectPlugin g_plugin = {
     CR_OnMonitorChanged,
     CR_OnQualityTierChanged,
     CR_LoadSettings,
-    CR_SaveSettings
+    CR_SaveSettings,
+    CR_OnSettingChanged
 };
 
 extern "C" __declspec(dllexport) IEffectPlugin* CreateEffectPlugin() {

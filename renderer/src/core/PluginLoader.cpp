@@ -1,7 +1,7 @@
 #include "PluginLoader.h"
 #include <iostream>
 
-PluginLoader::PluginLoader() {}
+PluginLoader::PluginLoader() : m_activeIndex(-1) {}
 
 PluginLoader::~PluginLoader() {
     UnloadAllPlugins();
@@ -57,9 +57,49 @@ void PluginLoader::UnloadAllPlugins() {
     m_plugins.clear();
 }
 
-IEffectPlugin* PluginLoader::GetFirstPlugin() const {
-    if (!m_plugins.empty()) {
-        return m_plugins.front().effect;
+IEffectPlugin* PluginLoader::GetActivePlugin() const {
+    if (m_activeIndex >= 0 && m_activeIndex < (int)m_plugins.size()) {
+        return m_plugins[m_activeIndex].effect;
     }
+    return nullptr;
+}
+
+std::string PluginLoader::GetActivePluginName() const {
+    if (m_activeIndex >= 0 && m_activeIndex < (int)m_plugins.size()) {
+        return m_plugins[m_activeIndex].name;
+    }
+    return "none";
+}
+
+void PluginLoader::SetActivePlugin(const std::string& name) {
+    if (name.empty() || name == "none") {
+        m_activeIndex = -1;
+        std::cout << "[PluginLoader] Switched to no active plugin\n";
+        return;
+    }
+    
+    for (size_t i = 0; i < m_plugins.size(); i++) {
+        std::string lowerName = m_plugins[i].name;
+        std::string query = name;
+        for (auto& c : lowerName) c = tolower(c);
+        for (auto& c : query) c = tolower(c);
+        
+        query.erase(std::remove(query.begin(), query.end(), '_'), query.end());
+        
+        if (lowerName.find(query) != std::string::npos) {
+            m_activeIndex = static_cast<int>(i);
+            std::cout << "[PluginLoader] Switched active plugin to: " << m_plugins[i].name << "\n";
+            return;
+        }
+    }
+    std::cout << "[PluginLoader] Failed to find plugin matching: " << name << "\n";
+}
+
+size_t PluginLoader::GetPluginCount() const {
+    return m_plugins.size();
+}
+
+IEffectPlugin* PluginLoader::GetPlugin(size_t index) const {
+    if (index < m_plugins.size()) return m_plugins[index].effect;
     return nullptr;
 }

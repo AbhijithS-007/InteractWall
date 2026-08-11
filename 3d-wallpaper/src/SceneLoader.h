@@ -45,6 +45,7 @@ struct SceneLighting {
 
 struct SceneRendering {
     bool lightingEnabled = false;
+    std::string qualityTier = "high"; // "low", "balanced", "high"
 };
 
 struct SceneData {

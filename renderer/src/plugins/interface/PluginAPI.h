@@ -14,6 +14,8 @@ typedef struct RendererContext {
     ID3D11RenderTargetView* mainRenderTargetView;
     int processingWidth;
     int processingHeight;
+    int screenWidth;
+    int screenHeight;
 } RendererContext;
 
 // Mock structs
@@ -22,7 +24,17 @@ typedef struct WallpaperLayers {
     const char* imagePathB;
 } WallpaperLayers;
 typedef struct MonitorInfo MonitorInfo;
-typedef struct QualityTier QualityTier;
+typedef enum QualityTierLevel {
+    QUALITY_TIER_LOW = 0,
+    QUALITY_TIER_BALANCED = 1,
+    QUALITY_TIER_HIGH = 2
+} QualityTierLevel;
+
+typedef struct QualityTier {
+    QualityTierLevel level;
+    int fpsCap;
+    bool disableOptionalPasses;
+} QualityTier;
 
 typedef struct IEffectPlugin {
     void (*Initialize)(RendererContext* ctx);
@@ -35,6 +47,7 @@ typedef struct IEffectPlugin {
     void (*OnQualityTierChanged)(const QualityTier* tier);
     void (*LoadSettings)(const char* jsonPath);
     void (*SaveSettings)(const char* jsonPath);
+    void (*OnSettingChanged)(const char* key, float value);
 } IEffectPlugin;
 
 typedef IEffectPlugin* (*PFN_CreateEffectPlugin)();

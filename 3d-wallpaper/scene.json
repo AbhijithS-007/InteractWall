@@ -12,7 +12,8 @@
     "maxRotationOffset": 16
   },
   "rendering": {
-    "lightingEnabled": true
+    "lightingEnabled": true,
+    "qualityTier": "balanced"
   },
   "lighting": {
     "ambientColor": "#333333",
@@ -43,19 +44,19 @@
       "id": "obj_1",
       "modelPath": "models/911.glb",
       "position": [
-        0.069,
+        0.548,
         -0.753,
         -0.098
       ],
       "rotation": [
-        9.708,
-        83.163,
-        -9.814
+        1.315,
+        -28.968,
+        0.463
       ],
       "scale": [
-        2.221,
-        2.221,
-        2.221
+        1.909,
+        1.909,
+        1.909
       ],
       "followMouse": true,
       "rotationMultiplier": 0.1

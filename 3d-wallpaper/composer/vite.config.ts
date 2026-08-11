@@ -91,6 +91,40 @@ const scenePlugin = () => ({
           }
         })
     })
+
+    server.middlewares.use('/api/apply-wallpaper', (req: any, res: any) => {
+      if (req.method !== 'POST') {
+        res.statusCode = 405
+        res.end(JSON.stringify({ error: 'Method not allowed' }))
+        return
+      }
+      
+      const { exec, spawn } = require('child_process')
+      
+      // 1. Kill any existing Scene3DViewer.exe
+      exec('taskkill /F /IM Scene3DViewer.exe', (err: any) => {
+        // It's fine if it fails (e.g. process not found)
+        
+        // 2. Launch Scene3DViewer.exe /wallpaper scene.json detached
+        const exePath = path.resolve(__dirname, '../build/Release/Scene3DViewer.exe')
+        const scenePath = path.resolve(__dirname, '../scene.json')
+        
+        try {
+          const child = spawn(exePath, ['/wallpaper', scenePath], {
+            cwd: path.resolve(__dirname, '..'),
+            detached: true,
+            stdio: 'ignore'
+          })
+          child.unref()
+          
+          res.statusCode = 200
+          res.end(JSON.stringify({ success: true }))
+        } catch (e: any) {
+          res.statusCode = 500
+          res.end(JSON.stringify({ success: false, error: e.message }))
+        }
+      })
+    })
   }
 })
 

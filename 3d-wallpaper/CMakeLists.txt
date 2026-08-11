@@ -11,7 +11,9 @@ add_executable(Scene3DViewer WIN32
     src/GLBLoader.cpp
     src/SceneLoader.cpp
     src/TextureLoader.cpp
+    src/IBLPreprocessor.cpp
 )
+add_executable(dbg_catcher dbg_catcher.cpp)
 
 target_include_directories(Scene3DViewer PRIVATE libs)
 
@@ -45,4 +47,28 @@ add_custom_command(
     TARGET Scene3DViewer POST_BUILD
     COMMAND fxc.exe /T ps_5_0 /E PSMain /Fo "$<TARGET_FILE_DIR:Scene3DViewer>/QuadPS.cso" "${CMAKE_CURRENT_SOURCE_DIR}/shaders/QuadPS.hlsl"
     COMMENT "Compiling QuadPS.hlsl"
+)
+
+add_custom_command(
+    TARGET Scene3DViewer POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_FILE_DIR:Scene3DViewer>/envmaps/cache"
+    COMMENT "Creating envmaps/cache directory"
+)
+
+add_custom_command(
+    TARGET Scene3DViewer POST_BUILD
+    COMMAND fxc.exe /T cs_5_0 /E CSMain /Fo "$<TARGET_FILE_DIR:Scene3DViewer>/EquirectToCube.cso" "${CMAKE_CURRENT_SOURCE_DIR}/shaders/EquirectToCube.hlsl"
+    COMMENT "Compiling EquirectToCube.hlsl"
+)
+
+add_custom_command(
+    TARGET Scene3DViewer POST_BUILD
+    COMMAND fxc.exe /T cs_5_0 /E CSMain /Fo "$<TARGET_FILE_DIR:Scene3DViewer>/IrradianceConvolve.cso" "${CMAKE_CURRENT_SOURCE_DIR}/shaders/IrradianceConvolve.hlsl"
+    COMMENT "Compiling IrradianceConvolve.hlsl"
+)
+
+add_custom_command(
+    TARGET Scene3DViewer POST_BUILD
+    COMMAND fxc.exe /T cs_5_0 /E CSMain /Fo "$<TARGET_FILE_DIR:Scene3DViewer>/PrefilterSpecular.cso" "${CMAKE_CURRENT_SOURCE_DIR}/shaders/PrefilterSpecular.hlsl"
+    COMMENT "Compiling PrefilterSpecular.hlsl"
 )

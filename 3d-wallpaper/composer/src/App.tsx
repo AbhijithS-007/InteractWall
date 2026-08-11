@@ -105,6 +105,7 @@ function App() {
   const [modelPath, setModelPath] = useState('models/Duck.glb')
   const [bgType, setBgType] = useState('image')
   const [bgValue, setBgValue] = useState('background.jpg')
+  const [qualityTier, setQualityTier] = useState<'low' | 'balanced' | 'high'>('high')
   
   const [resetCameraTrigger, setResetCameraTrigger] = useState(0)
 
@@ -154,6 +155,9 @@ function App() {
             if (data.camera.sensitivity !== undefined) setSensitivity(data.camera.sensitivity)
             if (data.camera.maxRotationOffset !== undefined) setMaxRotationOffset(data.camera.maxRotationOffset)
           }
+          if (data.rendering && data.rendering.qualityTier !== undefined) {
+            setQualityTier(data.rendering.qualityTier)
+          }
         }
         setStatus('')
       })
@@ -170,6 +174,9 @@ function App() {
     if (!newSceneData.camera) newSceneData.camera = { fov: 45 }
     newSceneData.camera.sensitivity = sensitivity
     newSceneData.camera.maxRotationOffset = maxRotationOffset
+    
+    if (!newSceneData.rendering) newSceneData.rendering = { lightingEnabled: true }
+    newSceneData.rendering.qualityTier = qualityTier
 
     newSceneData.background = { type: bgType, value: bgValue, fit: "cover" }
     
@@ -206,6 +213,27 @@ function App() {
         setTimeout(() => setStatus(''), 3000)
       } else {
         setStatus('Failed to save.')
+      }
+    } catch (e) {
+      setStatus(`Error: ${(e as Error).message}`)
+    }
+  }
+
+  const handleApplyWallpaper = async () => {
+    // Save scene first
+    await handleUpdate()
+    setStatus('Applying as Wallpaper...')
+    
+    try {
+      const res = await fetch('/api/apply-wallpaper', {
+        method: 'POST',
+      })
+      if (res.ok) {
+        setStatus('Wallpaper applied successfully!')
+        setTimeout(() => setStatus(''), 3000)
+      } else {
+        const err = await res.json()
+        setStatus(`Failed to apply wallpaper: ${err.error}`)
       }
     } catch (e) {
       setStatus(`Error: ${(e as Error).message}`)
@@ -442,6 +470,19 @@ function App() {
         </div>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+          <label>Rendering Quality Tier</label>
+          <select 
+            value={qualityTier}
+            onChange={e => setQualityTier(e.target.value as 'low' | 'balanced' | 'high')}
+            style={{ padding: '8px', borderRadius: '4px', border: '1px solid #444', backgroundColor: '#111', color: '#fff' }}
+          >
+            <option value="low">Low (Fast, No IBL)</option>
+            <option value="balanced">Balanced</option>
+            <option value="high">High (Full PBR)</option>
+          </select>
+        </div>
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
           <label>Background Value {bgType === 'color' ? '(Hex)' : '(Relative Path)'}</label>
           <input 
             type="text" 
@@ -456,6 +497,13 @@ function App() {
           style={{ padding: '10px', backgroundColor: '#3498db', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}
         >
           Update Scene
+        </button>
+
+        <button 
+          onClick={handleApplyWallpaper}
+          style={{ padding: '10px', backgroundColor: '#2ecc71', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', marginTop: '10px' }}
+        >
+          Apply as Wallpaper
         </button>
         
         <button 

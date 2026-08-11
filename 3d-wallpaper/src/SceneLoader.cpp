@@ -128,6 +128,7 @@ bool LoadScene(const std::string& jsonPath, SceneData& outScene) {
     if (root.contains("rendering")) {
         auto& ren = root["rendering"];
         outScene.rendering.lightingEnabled = GetOr<bool>(ren, "lightingEnabled", false);
+        outScene.rendering.qualityTier = GetOr<std::string>(ren, "qualityTier", "high");
     }
 
     // Lighting

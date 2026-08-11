@@ -7,6 +7,12 @@
 #include <cstdint>
 #include <algorithm>
 #include "PluginLoader.h"
+#include "../power/PowerManager.h"
+#include "../quality/QualityManager.h"
+#include "../ipc/IPCServer.h"
+#include <wtsapi32.h>
+#pragma comment(lib, "Wtsapi32.lib")
+#pragma comment(lib, "PowrProf.lib")
 
 // Global variables for D3D
 ID3D11Device*            g_pd3dDevice           = nullptr;
@@ -20,6 +26,9 @@ HWND g_workerw = nullptr;
 PluginLoader g_pluginLoader;
 RendererContext g_pluginContext = {};
 
+static std::string g_lastLayerA = "";
+static std::string g_lastLayerB = "";
+
 // Timer state
 auto     g_lastFrameTime = std::chrono::high_resolution_clock::now();
 uint64_t g_frameCount    = 0;
@@ -28,14 +37,13 @@ uint64_t g_frameCount    = 0;
 // Console
 // ---------------------------------------------------------------
 void InitConsole() {
+#ifdef _DEBUG
     AllocConsole();
     FILE* dummy;
     freopen_s(&dummy, "CONOUT$", "w", stdout);
     freopen_s(&dummy, "CONOUT$", "w", stderr);
-    // Sync C and C++ streams
-    std::ios::sync_with_stdio(true);
-    std::cout.clear();
-    std::cerr.clear();
+    std::cout << "[Core] Console initialized.\n";
+#endif
 }
 
 // ---------------------------------------------------------------
@@ -105,6 +113,23 @@ void CleanupRenderTarget() {
         g_mainRenderTargetView = nullptr;
     }
 }
+#include <fstream>
+std::string ReadPreferredGPU() {
+    char appData[MAX_PATH];
+    if (GetEnvironmentVariableA("APPDATA", appData, MAX_PATH) > 0) {
+        std::string path = std::string(appData) + "\\InteractWall\\renderer.cfg";
+        std::ifstream file(path);
+        if (file.is_open()) {
+            std::string line;
+            while (std::getline(file, line)) {
+                if (line.rfind("preferredGPU=", 0) == 0) {
+                    return line.substr(13);
+                }
+            }
+        }
+    }
+    return "";
+}
 
 bool InitD3D(HWND hwnd, int width, int height) {
     // ---- Feature levels ----
@@ -121,9 +146,31 @@ bool InitD3D(HWND hwnd, int width, int height) {
     createDeviceFlags |= D3D11_CREATE_DEVICE_DEBUG;
 #endif
 
+    std::string preferredGPU = ReadPreferredGPU();
+    IDXGIAdapter1* selectedAdapter = nullptr;
+
+    IDXGIFactory1* pFactory = nullptr;
+    if (SUCCEEDED(CreateDXGIFactory1(__uuidof(IDXGIFactory1), (void**)&pFactory))) {
+        IDXGIAdapter1* pAdapter = nullptr;
+        for (UINT i = 0; pFactory->EnumAdapters1(i, &pAdapter) != DXGI_ERROR_NOT_FOUND; ++i) {
+            DXGI_ADAPTER_DESC1 desc;
+            pAdapter->GetDesc1(&desc);
+            char adapterName[128] = {};
+            WideCharToMultiByte(CP_UTF8, 0, desc.Description, -1, adapterName, sizeof(adapterName), nullptr, nullptr);
+            if (preferredGPU == adapterName) {
+                selectedAdapter = pAdapter;
+                break; // Keep reference
+            }
+            pAdapter->Release();
+        }
+        pFactory->Release();
+    }
+
+    D3D_DRIVER_TYPE driverType = selectedAdapter ? D3D_DRIVER_TYPE_UNKNOWN : D3D_DRIVER_TYPE_HARDWARE;
+
     HRESULT hr = D3D11CreateDevice(
-        nullptr,
-        D3D_DRIVER_TYPE_HARDWARE,
+        selectedAdapter,
+        driverType,
         nullptr,
         createDeviceFlags,
         featureLevels, ARRAYSIZE(featureLevels),
@@ -132,6 +179,10 @@ bool InitD3D(HWND hwnd, int width, int height) {
         &featureLevel,
         &g_pd3dDeviceContext
     );
+    
+    if (selectedAdapter) {
+        selectedAdapter->Release();
+    }
 
     if (FAILED(hr)) {
         std::cout << "D3D11CreateDevice failed (HRESULT 0x" << std::hex << hr << std::dec << ")\n";
@@ -163,6 +214,8 @@ bool InitD3D(HWND hwnd, int width, int height) {
             WideCharToMultiByte(CP_UTF8, 0, desc.Description, -1, adapterName, sizeof(adapterName), nullptr, nullptr);
             std::cout << "Adapter: " << adapterName << "\n";
             std::cout << "Dedicated VRAM: " << vramMB << " MB\n";
+            QualityManager::Initialize(vramMB, adapterName);
+            QualityManager::SetQualityTierOverride(QUALITY_TIER_HIGH); // Force maximum quality
         }
         dxgiAdapter->Release();
     }
@@ -208,6 +261,30 @@ void CleanupDeviceD3D() {
     if (g_pd3dDevice)        { g_pd3dDevice->Release();        g_pd3dDevice        = nullptr; }
 }
 
+void ResetGPUState() {
+    if (!g_pd3dDeviceContext) return;
+    
+    // Unbind Render Targets
+    g_pd3dDeviceContext->OMSetRenderTargets(1, &g_mainRenderTargetView, nullptr);
+    
+    // Unbind Shader Resources
+    ID3D11ShaderResourceView* nullSRVs[8] = {nullptr};
+    g_pd3dDeviceContext->PSSetShaderResources(0, 8, nullSRVs);
+    g_pd3dDeviceContext->VSSetShaderResources(0, 8, nullSRVs);
+    
+    // Unbind Constant Buffers
+    ID3D11Buffer* nullCBs[8] = {nullptr};
+    g_pd3dDeviceContext->PSSetConstantBuffers(0, 8, nullCBs);
+    g_pd3dDeviceContext->VSSetConstantBuffers(0, 8, nullCBs);
+    
+    // Unbind Samplers
+    ID3D11SamplerState* nullSamps[8] = {nullptr};
+    g_pd3dDeviceContext->PSSetSamplers(0, 8, nullSamps);
+    
+    // Reset Blend State to opaque (null is default opaque)
+    g_pd3dDeviceContext->OMSetBlendState(nullptr, nullptr, 0xffffffff);
+}
+
 // ---------------------------------------------------------------
 // Render
 // ---------------------------------------------------------------
@@ -220,22 +297,24 @@ void Render() {
     g_lastFrameTime = now;
 
     g_frameCount++;
-    if (g_frameCount % 60 == 0) {
-        std::cout << "Frame time: " << (deltaTime * 1000.0f) << " ms\n";
+
+    IEffectPlugin* plugin = g_pluginLoader.GetActivePlugin();
+    if (!plugin) {
+        if (IsWindowVisible(g_hwnd)) {
+            ShowWindow(g_hwnd, SW_HIDE);
+        }
+        return; // Don't render anything if no plugin is active
+    }
+
+    if (!IsWindowVisible(g_hwnd)) {
+        ShowWindow(g_hwnd, SW_SHOW);
     }
 
     // Bind the render target (required before clear / present have any effect).
     g_pd3dDeviceContext->OMSetRenderTargets(1, &g_mainRenderTargetView, nullptr);
 
-    IEffectPlugin* plugin = g_pluginLoader.GetFirstPlugin();
-    if (plugin) {
-        if (plugin->Update) plugin->Update(deltaTime);
-        if (plugin->Render) plugin->Render();
-    } else {
-        // Fallback clear
-        const float clearColor[4] = { 0.0f, 0.5f, 0.5f, 1.0f };
-        g_pd3dDeviceContext->ClearRenderTargetView(g_mainRenderTargetView, clearColor);
-    }
+    if (plugin->Update) plugin->Update(deltaTime);
+    if (plugin->Render) plugin->Render();
 
     g_pSwapChain->Present(1, 0); // VSync on
 }
@@ -246,16 +325,8 @@ void Render() {
 LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
     switch (msg) {
     case WM_TIMER:
-        Render();
-        return 0;
-
-    case WM_MOUSEMOVE:
-        if (IEffectPlugin* plugin = g_pluginLoader.GetFirstPlugin()) {
-            if (plugin->OnMouseMove) {
-                int x = static_cast<int>(LOWORD(lParam));
-                int y = static_cast<int>(HIWORD(lParam));
-                plugin->OnMouseMove(x, y);
-            }
+        if (wParam == 2) {
+            PowerManager::Update();
         }
         return 0;
 
@@ -270,6 +341,38 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
                 DXGI_FORMAT_UNKNOWN,
                 0);
             CreateRenderTarget();
+        }
+        return 0;
+
+    case WM_WTSSESSION_CHANGE:
+        if (wParam == WTS_SESSION_LOCK) {
+            std::cout << "[PowerManager] Session Locked - Suspending\n";
+            PowerManager::SetSessionLocked(true);
+        } else if (wParam == WTS_SESSION_UNLOCK) {
+            std::cout << "[PowerManager] Session Unlocked - Resuming\n";
+            PowerManager::SetSessionLocked(false);
+        }
+        return 0;
+
+    case WM_POWERBROADCAST:
+        if (wParam == PBT_APMRESUMEAUTOMATIC || wParam == PBT_APMRESUMESUSPEND) {
+            std::cout << "[Core] System resumed from sleep. Re-attaching to WorkerW...\n";
+            // Give Windows a moment to rebuild the desktop hierarchy after wakeup
+            Sleep(1500);
+            HWND newWorkerW = GetWorkerW();
+            if (newWorkerW) {
+                SetParent(g_hwnd, newWorkerW);
+                g_workerw = newWorkerW;
+                std::cout << "[Core] Re-parented to WorkerW: 0x" << std::hex
+                          << reinterpret_cast<uintptr_t>(newWorkerW) << std::dec << "\n";
+                // Force a resize/repaint to ensure DXGI surface is valid again
+                RECT rc;
+                GetClientRect(g_hwnd, &rc);
+                PostMessage(g_hwnd, WM_SIZE, SIZE_RESTORED,
+                    MAKELPARAM(rc.right - rc.left, rc.bottom - rc.top));
+            } else {
+                std::cout << "[Core] WARNING: Could not re-find WorkerW after resume!\n";
+            }
         }
         return 0;
 
@@ -308,6 +411,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE /*hPrevInstance*/, LPSTR /*lpC
     wc.style         = CS_CLASSDC;
     wc.lpfnWndProc   = WndProc;
     wc.hInstance     = hInstance;
+    wc.hCursor       = LoadCursor(nullptr, IDC_ARROW);
     wc.lpszClassName = "InteractWallClass";
 
     if (!RegisterClassEx(&wc)) {
@@ -341,10 +445,11 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE /*hPrevInstance*/, LPSTR /*lpC
         return 1;
     }
 
-    // Explicitly reparent our window into Explorer's WorkerW layer.
-    // This is the correct WorkerW hack (SetParent instead of CreateWindow parent).
     SetParent(g_hwnd, workerW);
     std::cout << "Renderer HWND: 0x" << std::hex << reinterpret_cast<uintptr_t>(g_hwnd) << std::dec << "\n";
+
+    // Register for session lock/unlock notifications
+    WTSRegisterSessionNotification(g_hwnd, NOTIFY_FOR_THIS_SESSION);
 
     // ---- Initialize Direct3D ----
     if (!InitD3D(g_hwnd, screenWidth, screenHeight)) {
@@ -362,6 +467,11 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE /*hPrevInstance*/, LPSTR /*lpC
     int processingWidth = std::min({ 2560, screenWidth, sourceResWidth });
     int processingHeight = std::min({ 1440, screenHeight, sourceResHeight });
 
+    if (QualityManager::GetCurrentTier()->level == QUALITY_TIER_LOW) {
+        processingWidth /= 2;
+        processingHeight /= 2;
+    }
+
     std::cout << "Computed Core Processing Resolution: " << processingWidth << "x" << processingHeight << "\n";
 
     g_pluginContext.device = g_pd3dDevice;
@@ -369,47 +479,198 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE /*hPrevInstance*/, LPSTR /*lpC
     g_pluginContext.swapChain = g_pSwapChain;
     g_pluginContext.processingWidth = processingWidth;
     g_pluginContext.processingHeight = processingHeight;
+    g_pluginContext.screenWidth = screenWidth;
+    g_pluginContext.screenHeight = screenHeight;
     g_pluginContext.mainRenderTargetView = g_mainRenderTargetView;
 
     char exePath[MAX_PATH];
     GetModuleFileNameA(NULL, exePath, MAX_PATH);
     std::string exeDir = exePath;
     exeDir = exeDir.substr(0, exeDir.find_last_of("\\/"));
+    
     std::string pluginsDir = exeDir + "\\plugins";
 
     g_pluginLoader.LoadAllPlugins(pluginsDir);
-    IEffectPlugin* activePlugin = g_pluginLoader.GetFirstPlugin();
-    if (activePlugin && activePlugin->Initialize) {
-        activePlugin->Initialize(&g_pluginContext);
-    }
+    // Note: We no longer initialize all plugins at startup to prevent state bleeding.
+    // Initialization is deferred until a plugin becomes active via set_effect.
     
-    if (activePlugin && activePlugin->OnWallpaperChanged) {
-        std::string pathA = exeDir + "\\..\\..\\..\\wallpapers\\Witcher.jpg";
-        std::string pathB = exeDir + "\\..\\..\\..\\wallpapers\\frieren-magical.jpeg";
-        WallpaperLayers layers = { pathA.c_str(), pathB.c_str() };
-        activePlugin->OnWallpaperChanged(&layers);
-    }
+    // Set initial window state based on active plugin (null on startup)
+    ShowWindow(g_hwnd, SW_HIDE);
 
-    // ---- Setup rendering timer ----
-    // We use 17ms instead of 16ms. At 16ms (which is faster than 60Hz's 16.67ms),
-    // the message queue never fully empties because a new timer message arrives 
-    // before the VSync wait finishes. This makes Windows think the app is frozen 
-    // on startup. 17ms guarantees the queue empties and clears the loading cursor.
-    SetTimer(g_hwnd, 1, 17, nullptr);
+    // ---- Setup Power Manager & timer ----
+    PowerManager::Initialize(g_hwnd);
+    IPCServer::Start();
 
-    // ---- Message loop (blocking — no busy spin) ----
+    SetTimer(g_hwnd, 2, 500, nullptr);
+
+    // ---- Message loop ----
     MSG msg = {};
-    while (GetMessage(&msg, nullptr, 0, 0)) {
-        TranslateMessage(&msg);
-        DispatchMessage(&msg);
+    bool isRunning = true;
+    while (isRunning) {
+        while (PeekMessage(&msg, nullptr, 0, 0, PM_REMOVE)) {
+            if (msg.message == WM_QUIT) {
+                isRunning = false;
+                break;
+            }
+            TranslateMessage(&msg);
+            DispatchMessage(&msg);
+        }
+
+        if (!isRunning) break;
+
+        // Global Mouse Tracking
+        POINT pt;
+        if (GetCursorPos(&pt)) {
+            static POINT lastPt = { -1, -1 };
+            if (pt.x != lastPt.x || pt.y != lastPt.y) {
+                lastPt = pt;
+                PowerManager::OnMouseMove();
+                if (IEffectPlugin* plugin = g_pluginLoader.GetActivePlugin()) {
+                    if (plugin->OnMouseMove) {
+                        plugin->OnMouseMove(pt.x, pt.y);
+                    }
+                }
+            }
+        }
+        
+        // (Removed 15-second heartbeat auto-exit to prevent premature exits during sleep or when UI is backgrounded)
+
+        // Process IPC Commands
+        auto cmds = IPCServer::GetPendingCommands();
+        for (const auto& cmd : cmds) {
+            if (cmd.cmd == "apply_wallpaper") {
+                g_lastLayerA = cmd.strArg1;
+                g_lastLayerB = cmd.strArg2;
+                IEffectPlugin* plugin = g_pluginLoader.GetActivePlugin();
+                if (plugin && plugin->OnWallpaperChanged) {
+                    WallpaperLayers layers = { g_lastLayerA.c_str(), g_lastLayerB.c_str() };
+                    plugin->OnWallpaperChanged(&layers);
+                }
+            } else if (cmd.cmd == "set_effect") {
+                IEffectPlugin* oldPlugin = g_pluginLoader.GetActivePlugin();
+                g_pluginLoader.SetActivePlugin(cmd.strArg1);
+                IEffectPlugin* newPlugin = g_pluginLoader.GetActivePlugin();
+                if (newPlugin && newPlugin != oldPlugin) {
+                    if (oldPlugin && oldPlugin->Shutdown) {
+                        oldPlugin->Shutdown();
+                    }
+                    ResetGPUState();
+                    
+                    if (newPlugin->Initialize) {
+                        newPlugin->Initialize(&g_pluginContext);
+                    }
+                    if (newPlugin->OnWallpaperChanged && !g_lastLayerA.empty()) {
+                        WallpaperLayers layers = { g_lastLayerA.c_str(), g_lastLayerB.c_str() };
+                        newPlugin->OnWallpaperChanged(&layers);
+                    }
+                } else if (newPlugin && newPlugin == oldPlugin) {
+                    if (newPlugin->OnWallpaperChanged && !g_lastLayerA.empty()) {
+                        WallpaperLayers layers = { g_lastLayerA.c_str(), g_lastLayerB.c_str() };
+                        newPlugin->OnWallpaperChanged(&layers);
+                    }
+                }
+            } else if (cmd.cmd == "set_quality_tier") {
+                if (cmd.strArg1 == "low") QualityManager::SetQualityTierOverride(QUALITY_TIER_LOW);
+                else if (cmd.strArg1 == "balanced") QualityManager::SetQualityTierOverride(QUALITY_TIER_BALANCED);
+                else if (cmd.strArg1 == "high") QualityManager::SetQualityTierOverride(QUALITY_TIER_HIGH);
+            } else if (cmd.cmd == "set_setting") {
+                if (cmd.strArg1 == "engine.idleTimeout") {
+                    PowerManager::SetIdleTimeout(cmd.floatArg);
+                    std::cout << "[main] Engine setting applied: idleTimeout = " << cmd.floatArg << "\n";
+                } else if (cmd.strArg1 == "engine.pauseHidden") {
+                    PowerManager::SetPauseHidden(cmd.floatArg > 0.5f);
+                    std::cout << "[main] Engine setting applied: pauseHidden = " << (cmd.floatArg > 0.5f) << "\n";
+                } else if (cmd.strArg1 == "engine.pauseFullscreen") {
+                    PowerManager::SetPauseFullscreen(cmd.floatArg > 0.5f);
+                    std::cout << "[main] Engine setting applied: pauseFullscreen = " << (cmd.floatArg > 0.5f) << "\n";
+                } else if (cmd.strArg1 == "engine.pauseBattery") {
+                    PowerManager::SetPauseBattery(cmd.floatArg > 0.5f);
+                    std::cout << "[main] Engine setting applied: pauseBattery = " << (cmd.floatArg > 0.5f) << "\n";
+                } else if (cmd.strArg1 == "engine.pauseSessionLocked") {
+                    PowerManager::SetPauseSessionLocked(cmd.floatArg > 0.5f);
+                    std::cout << "[main] Engine setting applied: pauseSessionLocked = " << (cmd.floatArg > 0.5f) << "\n";
+                } else if (cmd.strArg1 == "engine.preferredGPU") {
+                    char appData[MAX_PATH];
+                    if (GetEnvironmentVariableA("APPDATA", appData, MAX_PATH) > 0) {
+                        std::string path = std::string(appData) + "\\InteractWall\\renderer.cfg";
+                        std::ofstream file(path);
+                        if (file.is_open()) {
+                            file << "preferredGPU=" << cmd.strArg2 << "\n";
+                        }
+                    }
+                    std::cout << "[main] Engine setting applied: preferredGPU = " << cmd.strArg2 << " (Restarting...)\n";
+                    PostQuitMessage(0);
+                } else {
+                    IEffectPlugin* plugin = g_pluginLoader.GetActivePlugin();
+                    if (plugin && plugin->OnSettingChanged) {
+                        plugin->OnSettingChanged(cmd.strArg1.c_str(), cmd.floatArg);
+                    }
+                }
+            } else if (cmd.cmd == "remove_effect") {
+                IEffectPlugin* oldPlugin = g_pluginLoader.GetActivePlugin();
+                if (oldPlugin) {
+                    if (oldPlugin->Shutdown) oldPlugin->Shutdown();
+                    ResetGPUState();
+                }
+                g_pluginLoader.SetActivePlugin("");
+            } else if (cmd.cmd == "quit") {
+                std::cout << "[main] Received quit command. Exiting.\n";
+                isRunning = false;
+                break;
+            }
+        }
+
+        int fpsCap = QualityManager::GetCurrentTier()->fpsCap;
+        if (PowerManager::ShouldRenderFrame(fpsCap)) {
+            auto beforeRender = std::chrono::high_resolution_clock::now();
+            Render();
+            auto afterRender = std::chrono::high_resolution_clock::now();
+            float renderMs = std::chrono::duration<float, std::milli>(afterRender - beforeRender).count();
+            
+            // Safeguard against VSync failure or early returns (e.g. DXGI_STATUS_OCCLUDED)
+            // If the frame took less than 1ms, VSync did not block. Sleep to prevent 100% CPU lockup.
+            if (renderMs < 1.0f) {
+                Sleep(1);
+            }
+            
+            // Update IPC status periodically
+            if (g_frameCount % 60 == 0) {
+                StatusSnapshot snap;
+                snap.fps = 60.0f; // Calculate real FPS later
+                snap.cpu = 0.0f;
+                snap.gpuMemMB = 0.0f;
+                
+                int stateEnum = PowerManager::GetState();
+                stateEnum = std::max(0, std::min(stateEnum, 7));
+                const char* states[] = {"VISIBLE_ACTIVE", "VISIBLE_IDLE_LOW_FPS", "IDLE_PAUSED", "HIDDEN_OCCLUDED", "HIDDEN_FULLSCREEN", "HIDDEN_BATTERY", "HIDDEN_SESSION_LOCKED", "HIDDEN_REMOTE_SESSION"};
+                snap.state = states[stateEnum];
+                
+                int tierEnum = QualityManager::GetCurrentTier()->level;
+                tierEnum = std::max(0, std::min(tierEnum, 2));
+                const char* tiers[] = {"LOW", "BALANCED", "HIGH"};
+                snap.tier = tiers[tierEnum];
+                
+                snap.activePlugin = g_pluginLoader.GetActivePluginName();
+                
+                IPCServer::UpdateStatus(snap);
+            }
+        } else {
+            Sleep(1);
+        }
     }
+
+    WTSUnRegisterSessionNotification(g_hwnd);
 
     // ---- Cleanup ----
-    KillTimer(g_hwnd, 1);
+    IPCServer::Stop();
     CleanupDeviceD3D();
     DestroyWindow(g_hwnd);
     UnregisterClass(wc.lpszClassName, hInstance);
-    CoUninitialize();
 
-    return static_cast<int>(msg.wParam);
+    std::cout << "InteractWallRenderer Exiting cleanly.\n";
+    
+    // Force Explorer to redraw the desktop wallpaper
+    SystemParametersInfoA(SPI_SETDESKWALLPAPER, 0, nullptr, SPIF_SENDCHANGE);
+    
+    return 0;
 }

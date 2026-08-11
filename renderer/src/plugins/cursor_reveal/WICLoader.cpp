@@ -13,6 +13,9 @@ bool WICLoader::LoadTexture(
     ID3D11Texture2D** outTexture,
     ID3D11ShaderResourceView** outSRV) 
 {
+    if (outTexture) *outTexture = nullptr;
+    if (outSRV) *outSRV = nullptr;
+    
     IWICImagingFactory* wicFactory = nullptr;
     HRESULT hr = CoCreateInstance(
         CLSID_WICImagingFactory, nullptr, CLSCTX_INPROC_SERVER,
@@ -20,8 +23,10 @@ bool WICLoader::LoadTexture(
 
     if (FAILED(hr)) return false;
 
-    // Convert string to wstring
-    std::wstring wpath(filepath.begin(), filepath.end());
+    // Convert UTF-8 string to wstring (supports non-ASCII paths)
+    int wlen = MultiByteToWideChar(CP_UTF8, 0, filepath.c_str(), -1, nullptr, 0);
+    std::wstring wpath(wlen, L'\0');
+    MultiByteToWideChar(CP_UTF8, 0, filepath.c_str(), -1, &wpath[0], wlen);
 
     IWICBitmapDecoder* decoder = nullptr;
     hr = wicFactory->CreateDecoderFromFilename(

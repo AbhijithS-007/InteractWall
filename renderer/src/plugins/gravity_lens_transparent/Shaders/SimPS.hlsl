@@ -49,7 +49,7 @@ float4 main(VS_OUTPUT input) : SV_TARGET {
             // Older points have less pull (trail fade)
             float ageFade = 1.0 - ((float)i / (float)max(1, numPoints)); 
             
-            totalTargetDisp += -dir * pull * safeDepth * ageFade;
+            totalTargetDisp += dir * pull * safeDepth * ageFade;
             totalInfluence += pull * ageFade;
         }
     }

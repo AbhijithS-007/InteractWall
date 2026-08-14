@@ -6,6 +6,7 @@
 #include <string>
 #include <chrono>
 #include <deque>
+#include "../../ipc/json.hpp"
 
 static RendererContext* g_ctx = nullptr;
 static std::vector<std::pair<float, float>> g_mousePoints;
@@ -19,11 +20,11 @@ static float g_currentTime = 0.0f;
 static float g_lastFrameDelta = 0.0f;
 
 struct Settings {
-    float brushSize = 160.0f;
-    float brushHardness = 0.2f; // Lower = softer edge
-    float fadeSpeed = 0.035f;   // Lower = lasts longer
-    float trailLength = 1.0f;
-    bool fadeWhenResting = true;
+    float brushSize = 158.0f;
+    float brushHardness = 0.80f;
+    float fadeSpeed = 0.035f;
+    float trailLength = 0.0f;
+    bool fadeWhenResting = false;
 } g_settings;
 
 // D3D Resources
@@ -385,8 +386,39 @@ void CR_OnWallpaperChanged(const WallpaperLayers* layers) {
 
 void CR_OnMonitorChanged(const MonitorInfo* info) {}
 void CR_OnQualityTierChanged(const QualityTier* tier) {}
-void CR_LoadSettings(const char* jsonPath) {}
-void CR_SaveSettings(const char* jsonPath) {}
+void CR_LoadSettings(const char* jsonPath) {
+    try {
+        std::ifstream file(jsonPath);
+        if (file.is_open()) {
+            nlohmann::json j;
+            file >> j;
+            if (j.contains("brushSize")) g_settings.brushSize = j["brushSize"];
+            if (j.contains("brushHardness")) g_settings.brushHardness = j["brushHardness"];
+            if (j.contains("fadeSpeed")) g_settings.fadeSpeed = j["fadeSpeed"];
+            if (j.contains("trailLength")) g_settings.trailLength = j["trailLength"];
+            if (j.contains("fadeWhenResting")) {
+                float v = j["fadeWhenResting"];
+                g_settings.fadeWhenResting = (v > 0.5f);
+            }
+        }
+    } catch (...) {}
+}
+
+void CR_SaveSettings(const char* jsonPath) {
+    try {
+        nlohmann::json j;
+        j["brushSize"] = g_settings.brushSize;
+        j["brushHardness"] = g_settings.brushHardness;
+        j["fadeSpeed"] = g_settings.fadeSpeed;
+        j["trailLength"] = g_settings.trailLength;
+        j["fadeWhenResting"] = g_settings.fadeWhenResting ? 1.0f : 0.0f;
+        
+        std::ofstream file(jsonPath);
+        if (file.is_open()) {
+            file << j.dump(4);
+        }
+    } catch (...) {}
+}
 
 void CR_OnSettingChanged(const char* key, float value) {
     std::string k(key);

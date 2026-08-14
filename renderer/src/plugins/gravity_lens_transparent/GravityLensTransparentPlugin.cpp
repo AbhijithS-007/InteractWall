@@ -12,14 +12,15 @@ using json = nlohmann::json;
 static RendererContext* g_ctx = nullptr;
 
 struct Settings {
-    float pressDepth = 0.03f;
-    float pressRadius = 0.08f;
+    float pressDepth = 0.030f;
+    float pressRadius = 0.10f;
     float stiffness = 50.0f;
-    float damping = 0.88f;
-    float dispersion = 0.02f;
+    float damping = 0.90f;
+    float dispersion = 0.020f;
     float coreDarkening = 0.15f;
-    float trailLength = 1.0f;
+    float trailLength = 0.4f;
     float fadeDecay = 0.92f; // 0=instant reset, 1=never fades
+    float shadingStrength = 0.70f; // 0=no shading, 1=full directional shading
 } g_settings;
 
 static int g_qualityTier = 2; // 0=Low, 1=Balanced, 2=High
@@ -65,7 +66,7 @@ struct CompositeConstantBuffer {
     float aspectRatio;
     float cursorUV[2];
     float pressRadius;
-    float padding2;
+    float shadingStrength;
 };
 
 static float g_mouseX = -1000.0f;
@@ -74,7 +75,7 @@ static float g_mouseY = -1000.0f;
 static std::vector<std::pair<float, float>> g_mouseTrail;
 static float g_timeSinceLastPoint = 0.0f;
 
-std::vector<char> SP_ReadFileContent(const std::string& filename) {
+std::vector<char> GLT_ReadFileContent(const std::string& filename) {
     std::ifstream file(filename, std::ios::binary | std::ios::ate);
     if (!file) return {};
     size_t size = (size_t)file.tellg();
@@ -84,7 +85,7 @@ std::vector<char> SP_ReadFileContent(const std::string& filename) {
     return buffer;
 }
 
-void SP_CreateSimTargets() {
+void GLT_CreateSimTargets() {
     for (int i=0; i<2; i++) {
         if (g_SimTex[i]) { g_SimTex[i]->Release(); g_SimTex[i] = nullptr; }
         if (g_SimRTV[i]) { g_SimRTV[i]->Release(); g_SimRTV[i] = nullptr; }
@@ -113,9 +114,9 @@ void SP_CreateSimTargets() {
     }
 }
 
-void SP_Initialize(RendererContext* ctx) {
+void GLT_Initialize(RendererContext* ctx) {
     g_ctx = ctx;
-    std::cout << "[StonePress] Initializing...\n";
+    std::cout << "[GravityLensTransparent] Initializing...\n";
 
     char exePath[MAX_PATH];
     GetModuleFileNameA(NULL, exePath, MAX_PATH);
@@ -123,9 +124,9 @@ void SP_Initialize(RendererContext* ctx) {
     exeDir = exeDir.substr(0, exeDir.find_last_of("\\/"));
     std::string pluginDir = exeDir + "\\plugins\\";
 
-    auto vsData = SP_ReadFileContent(pluginDir + "SP_FullscreenVS.cso");
-    auto simData = SP_ReadFileContent(pluginDir + "SP_SimPS.cso");
-    auto compData = SP_ReadFileContent(pluginDir + "SP_CompositePS.cso");
+    auto vsData = GLT_ReadFileContent(pluginDir + "GLT_FullscreenVS.cso");
+    auto simData = GLT_ReadFileContent(pluginDir + "GLT_SimPS.cso");
+    auto compData = GLT_ReadFileContent(pluginDir + "GLT_CompositePS.cso");
 
     g_ctx->device->CreateVertexShader(vsData.data(), vsData.size(), nullptr, &g_FullscreenVS);
     g_ctx->device->CreatePixelShader(simData.data(), simData.size(), nullptr, &g_SimPS);
@@ -154,10 +155,10 @@ void SP_Initialize(RendererContext* ctx) {
     blendDesc.RenderTarget[0].RenderTargetWriteMask = D3D11_COLOR_WRITE_ENABLE_ALL;
     g_ctx->device->CreateBlendState(&blendDesc, &g_BlendOpaque);
 
-    SP_CreateSimTargets();
+    GLT_CreateSimTargets();
 }
 
-void SP_Update(float deltaTime) {
+void GLT_Update(float deltaTime) {
     if (!g_ctx || !g_FullscreenVS || !g_SimPS) return;
 
 #ifdef _DEBUG
@@ -165,7 +166,7 @@ void SP_Update(float deltaTime) {
     s_debugTimer += deltaTime;
     if (s_debugTimer >= 1.0f) {
         s_debugTimer = 0.0f;
-        std::cout << "[StonePress] LIVE SETTINGS -> "
+        std::cout << "[GravityLensTransparent] LIVE SETTINGS -> "
                   << "Strength: " << g_settings.pressDepth << ", "
                   << "Radius: " << g_settings.pressRadius << ", "
                   << "Stiffness: " << g_settings.stiffness << ", "
@@ -257,7 +258,7 @@ void SP_Update(float deltaTime) {
     g_simIndex = nextSim;
 }
 
-void SP_Render() {
+void GLT_Render() {
     if (!g_ctx || !g_ctx->mainRenderTargetView || !g_CompositePS || !g_TexBase) return;
 
     D3D11_VIEWPORT screenVp = {};
@@ -287,7 +288,7 @@ void SP_Render() {
             ccb->cursorUV[1] = std::clamp((float)g_mouseY / (float)g_ctx->screenHeight, 0.0f, 1.0f);
         }
         ccb->pressRadius = g_settings.pressRadius;
-        
+        ccb->shadingStrength = g_settings.shadingStrength;
         g_ctx->context->Unmap(g_CompositeCB, 0);
     }
     g_ctx->context->PSSetConstantBuffers(0, 1, &g_CompositeCB);
@@ -302,7 +303,7 @@ void SP_Render() {
     g_ctx->context->PSSetShaderResources(0, 2, nullSRV);
 }
 
-void SP_Shutdown() {
+void GLT_Shutdown() {
     if (g_TexBase) { g_TexBase->Release(); g_TexBase = nullptr; }
     if (g_SRVBase) { g_SRVBase->Release(); g_SRVBase = nullptr; }
     for(int i=0; i<2; i++) {
@@ -325,14 +326,14 @@ void SP_Shutdown() {
     }
 }
 
-void SP_OnMouseMove(int x, int y) {
+void GLT_OnMouseMove(int x, int y) {
     if (!g_ctx) return;
     // Store raw screen-pixel coordinates; normalization to 0-1 UV happens at use sites
     g_mouseX = (float)x;
     g_mouseY = (float)y;
 }
 
-void SP_OnWallpaperChanged(const WallpaperLayers* layers) {
+void GLT_OnWallpaperChanged(const WallpaperLayers* layers) {
     if (g_TexBase) { g_TexBase->Release(); g_TexBase = nullptr; }
     if (g_SRVBase) { g_SRVBase->Release(); g_SRVBase = nullptr; }
     
@@ -341,20 +342,20 @@ void SP_OnWallpaperChanged(const WallpaperLayers* layers) {
     }
 }
 
-void SP_OnMonitorChanged(const MonitorInfo* info) {}
+void GLT_OnMonitorChanged(const MonitorInfo* info) {}
 
-void SP_OnQualityTierChanged(const QualityTier* tier) {
+void GLT_OnQualityTierChanged(const QualityTier* tier) {
     g_qualityTier = tier->level;
     int newSize = (g_qualityTier == 0) ? 64 : 128;
     if (g_gridSize != newSize) {
         g_gridSize = newSize;
         if (g_ctx && g_ctx->device) {
-            SP_CreateSimTargets();
+            GLT_CreateSimTargets();
         }
     }
 }
 
-void SP_LoadSettings(const char* jsonPath) {
+void GLT_LoadSettings(const char* jsonPath) {
     try {
         std::ifstream file(jsonPath);
         if (file.is_open()) {
@@ -368,11 +369,12 @@ void SP_LoadSettings(const char* jsonPath) {
             if (j.contains("coreDarkening")) g_settings.coreDarkening = j["coreDarkening"];
             if (j.contains("trailLength")) g_settings.trailLength = j["trailLength"];
             if (j.contains("fadeDecay")) g_settings.fadeDecay = j["fadeDecay"];
+            if (j.contains("shadingStrength")) g_settings.shadingStrength = std::clamp((float)j["shadingStrength"], 0.0f, 1.0f);
         }
     } catch (...) {}
 }
 
-void SP_SaveSettings(const char* jsonPath) {
+void GLT_SaveSettings(const char* jsonPath) {
     try {
         json j;
         j["pressDepth"] = g_settings.pressDepth;
@@ -383,6 +385,7 @@ void SP_SaveSettings(const char* jsonPath) {
         j["coreDarkening"] = g_settings.coreDarkening;
         j["trailLength"] = g_settings.trailLength;
         j["fadeDecay"] = g_settings.fadeDecay;
+        j["shadingStrength"] = g_settings.shadingStrength;
         
         std::ofstream file(jsonPath);
         if (file.is_open()) {
@@ -391,7 +394,7 @@ void SP_SaveSettings(const char* jsonPath) {
     } catch (...) {}
 }
 
-void SP_OnSettingChanged(const char* key, float value) {
+void GLT_OnSettingChanged(const char* key, float value) {
     std::string k(key);
     if (k == "pressDepth") g_settings.pressDepth = std::clamp(value, 0.0f, 0.15f);
     else if (k == "pressRadius") g_settings.pressRadius = std::clamp(value, 0.01f, 0.5f);
@@ -401,20 +404,21 @@ void SP_OnSettingChanged(const char* key, float value) {
     else if (k == "coreDarkening") g_settings.coreDarkening = value;
     else if (k == "trailLength") g_settings.trailLength = value;
     else if (k == "fadeDecay") g_settings.fadeDecay = value;
+    else if (k == "shadingStrength") g_settings.shadingStrength = std::clamp(value, 0.0f, 1.0f);
 }
 
 static IEffectPlugin g_plugin = {
-    SP_Initialize,
-    SP_Update,
-    SP_Render,
-    SP_Shutdown,
-    SP_OnMouseMove,
-    SP_OnWallpaperChanged,
-    SP_OnMonitorChanged,
-    SP_OnQualityTierChanged,
-    SP_LoadSettings,
-    SP_SaveSettings,
-    SP_OnSettingChanged
+    GLT_Initialize,
+    GLT_Update,
+    GLT_Render,
+    GLT_Shutdown,
+    GLT_OnMouseMove,
+    GLT_OnWallpaperChanged,
+    GLT_OnMonitorChanged,
+    GLT_OnQualityTierChanged,
+    GLT_LoadSettings,
+    GLT_SaveSettings,
+    GLT_OnSettingChanged
 };
 
 extern "C" __declspec(dllexport) IEffectPlugin* CreateEffectPlugin() {

@@ -135,27 +135,27 @@ foreach(SHADER ${GL_SHADERS})
     )
 endforeach()
 
-# Stone Press Plugin
-add_library(StonePress SHARED 
-    src/plugins/stone_press/StonePressPlugin.cpp
+# Gravity Lens Transparent Plugin
+add_library(GravityLensTransparent SHARED 
+    src/plugins/gravity_lens_transparent/GravityLensTransparentPlugin.cpp
     src/plugins/cursor_reveal/WICLoader.cpp
 )
-target_link_libraries(StonePress PRIVATE d3d11 dxgi)
-set_target_properties(StonePress PROPERTIES
+target_link_libraries(GravityLensTransparent PRIVATE d3d11 dxgi)
+set_target_properties(GravityLensTransparent PROPERTIES
     PREFIX ""
     RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/Release/plugins"
     RUNTIME_OUTPUT_DIRECTORY_RELEASE "${CMAKE_BINARY_DIR}/Release/plugins"
     RUNTIME_OUTPUT_DIRECTORY_DEBUG "${CMAKE_BINARY_DIR}/Debug/plugins"
 )
 
-# Compile HLSL Shaders for StonePress
-set(SP_SHADERS
+# Compile HLSL Shaders for GravityLensTransparent
+set(GLT_SHADERS
     FullscreenVS.hlsl
     SimPS.hlsl
     CompositePS.hlsl
 )
 
-foreach(SHADER ${SP_SHADERS})
+foreach(SHADER ${GLT_SHADERS})
     if (${SHADER} MATCHES ".*VS.*")
         set(PROFILE "vs_5_0")
     else()
@@ -164,9 +164,76 @@ foreach(SHADER ${SP_SHADERS})
 
     get_filename_component(SHADER_NAME ${SHADER} NAME_WE)
     add_custom_command(
-        TARGET StonePress POST_BUILD
-        COMMAND fxc.exe /T ${PROFILE} /E main /Fo "$<TARGET_FILE_DIR:StonePress>/SP_${SHADER_NAME}.cso" "${CMAKE_CURRENT_SOURCE_DIR}/src/plugins/stone_press/Shaders/${SHADER}"
-        COMMENT "Compiling StonePress ${SHADER}"
+        TARGET GravityLensTransparent POST_BUILD
+        COMMAND fxc.exe /T ${PROFILE} /E main /Fo "$<TARGET_FILE_DIR:GravityLensTransparent>/GLT_${SHADER_NAME}.cso" "${CMAKE_CURRENT_SOURCE_DIR}/src/plugins/gravity_lens_transparent/Shaders/${SHADER}"
+        COMMENT "Compiling GravityLensTransparent ${SHADER}"
     )
 endforeach()
 
+# Stone Press V2 Plugin
+add_library(StonePressV2 SHARED 
+    src/plugins/stone_press_v2/StonePressV2Plugin.cpp
+    src/plugins/cursor_reveal/WICLoader.cpp
+)
+target_link_libraries(StonePressV2 PRIVATE d3d11 dxgi)
+set_target_properties(StonePressV2 PROPERTIES
+    PREFIX ""
+    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/Release/plugins"
+    RUNTIME_OUTPUT_DIRECTORY_RELEASE "${CMAKE_BINARY_DIR}/Release/plugins"
+    RUNTIME_OUTPUT_DIRECTORY_DEBUG "${CMAKE_BINARY_DIR}/Debug/plugins"
+)
+
+# Compile HLSL Shaders for StonePressV2
+set(SP2_SHADERS
+    SP2_FullscreenVS.hlsl
+    SP2_CompositePS.hlsl
+)
+
+foreach(SHADER ${SP2_SHADERS})
+    if (${SHADER} MATCHES ".*VS.*")
+        set(PROFILE "vs_5_0")
+    else()
+        set(PROFILE "ps_5_0")
+    endif()
+
+    get_filename_component(SHADER_NAME ${SHADER} NAME_WE)
+    add_custom_command(
+        TARGET StonePressV2 POST_BUILD
+        COMMAND fxc.exe /T ${PROFILE} /E main /Fo "$<TARGET_FILE_DIR:StonePressV2>/${SHADER_NAME}.cso" "${CMAKE_CURRENT_SOURCE_DIR}/src/plugins/stone_press_v2/Shaders/${SHADER}"
+        COMMENT "Compiling StonePressV2 ${SHADER}"
+    )
+endforeach()
+
+# Brick Outline Plugin
+add_library(BrickOutline SHARED 
+    src/plugins/brick_outline/BrickOutlinePlugin.cpp
+    src/plugins/cursor_reveal/WICLoader.cpp
+)
+target_link_libraries(BrickOutline PRIVATE d3d11 dxgi)
+set_target_properties(BrickOutline PROPERTIES
+    PREFIX ""
+    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/Release/plugins"
+    RUNTIME_OUTPUT_DIRECTORY_RELEASE "${CMAKE_BINARY_DIR}/Release/plugins"
+    RUNTIME_OUTPUT_DIRECTORY_DEBUG "${CMAKE_BINARY_DIR}/Debug/plugins"
+)
+
+# Compile HLSL Shaders for BrickOutline
+set(BO_SHADERS
+    BO_FullscreenVS.hlsl
+    BO_CompositePS.hlsl
+)
+
+foreach(SHADER ${BO_SHADERS})
+    if (${SHADER} MATCHES ".*VS.*")
+        set(PROFILE "vs_5_0")
+    else()
+        set(PROFILE "ps_5_0")
+    endif()
+
+    get_filename_component(SHADER_NAME ${SHADER} NAME_WE)
+    add_custom_command(
+        TARGET BrickOutline POST_BUILD
+        COMMAND fxc.exe /T ${PROFILE} /E main /Fo "$<TARGET_FILE_DIR:BrickOutline>/${SHADER_NAME}.cso" "${CMAKE_CURRENT_SOURCE_DIR}/src/plugins/brick_outline/Shaders/${SHADER}"
+        COMMENT "Compiling BrickOutline ${SHADER}"
+    )
+endforeach()

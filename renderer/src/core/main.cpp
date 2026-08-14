@@ -324,6 +324,8 @@ void Render() {
 // ---------------------------------------------------------------
 LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
     switch (msg) {
+    case WM_NCHITTEST:
+        return HTTRANSPARENT;
     case WM_TIMER:
         if (wParam == 2) {
             PowerManager::Update();

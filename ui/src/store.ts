@@ -31,7 +31,7 @@ export interface EffectSettings {
         trailLength: number;
         fadeDecay: number;
     };
-    stone_press: {
+    gravity_lens_transparent: {
         pressDepth: number;
         pressRadius: number;
         stiffness: number;
@@ -40,6 +40,24 @@ export interface EffectSettings {
         coreDarkening: number;
         trailLength: number;
         fadeDecay: number;
+    };
+    stone_press_v2: {
+        pressDepth: number;
+        pressRadius: number;
+        stiffness: number;
+        damping: number;
+        depthDarkening: number;
+        directionalShading: number;
+        parallaxStrength: number;
+    };
+    brick_outline: {
+        brickWidth: number;
+        brickHeight: number;
+        lineThickness: number;
+        effectRadius: number;
+        edgeSoftness: number;
+        glowIntensity: number;
+        outlineColor: string;
     };
 }
 
@@ -119,7 +137,7 @@ export async function resetToDefaults() {
 
 export interface WallpaperPairing {
     effect: string;
-    settings: Record<string, number>;
+    settings: Record<string, any>;
 }
 
 export async function getWallpaperPairing(wallpaperPath: string): Promise<WallpaperPairing | null> {
@@ -128,7 +146,7 @@ export async function getWallpaperPairing(wallpaperPath: string): Promise<Wallpa
     return pairings[wallpaperPath] || null;
 }
 
-export async function saveWallpaperPairing(wallpaperPath: string, effect: string, settings: Record<string, number>) {
+export async function saveWallpaperPairing(wallpaperPath: string, effect: string, settings: Record<string, any>) {
     const store = await getStore();
     const pairings = await store.get<Record<string, WallpaperPairing>>('wallpaperPairings') || {};
     pairings[wallpaperPath] = { effect, settings };
@@ -136,15 +154,15 @@ export async function saveWallpaperPairing(wallpaperPath: string, effect: string
     await store.save();
 }
 
-export async function loadEffectSettings(effect: string): Promise<Record<string, number> | null> {
+export async function loadEffectSettings(effect: string): Promise<Record<string, any> | null> {
     const store = await getStore();
-    const effectSettings = await store.get<Record<string, Record<string, number>>>('effectSettings') || {};
+    const effectSettings = await store.get<Record<string, Record<string, any>>>('effectSettings') || {};
     return effectSettings[effect] || null;
 }
 
-export async function saveEffectSettings(effect: string, settings: Record<string, number>) {
+export async function saveEffectSettings(effect: string, settings: Record<string, any>) {
     const store = await getStore();
-    const effectSettings = await store.get<Record<string, Record<string, number>>>('effectSettings') || {};
+    const effectSettings = await store.get<Record<string, Record<string, any>>>('effectSettings') || {};
     // Merge new settings with existing ones for this effect
     effectSettings[effect] = { ...(effectSettings[effect] || {}), ...settings };
     await store.set('effectSettings', effectSettings);

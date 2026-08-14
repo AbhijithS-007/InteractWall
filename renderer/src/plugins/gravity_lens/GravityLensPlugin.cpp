@@ -11,13 +11,13 @@ using json = nlohmann::json;
 static RendererContext* g_ctx = nullptr;
 
 struct Settings {
-    float lensStrength = 5.0f;
-    float lensRadius = 0.3f;
+    float lensStrength = 6.5f;
+    float lensRadius = 0.10f;
     float stiffness = 50.0f;
-    float damping = 0.88f;
-    float dispersion = 0.02f;
-    float coreDarkening = 0.15f;
-    float trailLength = 1.0f;
+    float damping = 0.90f;
+    float dispersion = 0.020f;
+    float coreDarkening = 0.5f;
+    float trailLength = 0.0f;
     float fadeDecay = 0.92f; // 0=instant reset, 1=never fades
 } g_settings;
 

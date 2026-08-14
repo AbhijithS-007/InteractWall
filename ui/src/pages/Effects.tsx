@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import { setEffect, removeEffect, setSetting, setQualityTier, applyWallpaper, importWallpaper, generateDepthMap, getStatus } from '../ipc';
 import { saveWallpaperPairing, loadEffectSettings, saveEffectSettings, saveActiveSession } from '../store';
 import { open } from '@tauri-apps/plugin-dialog';
+
 export default function Effects() {
   const [quality, setQuality] = useState('balanced');
   
@@ -24,83 +25,117 @@ export default function Effects() {
   const [activeEffect, setActiveEffect] = useState<string | null>(null); // Actual running effect
   const [selectedEffect, setSelectedEffect] = useState<string | null>(null); // Effect being configured in Hero
 
+  // Gravity Lens State
+  const [glBaseImage, setGLBaseImage] = useState<string | null>(null);
+  const [glStrength, setGLStrength] = useState(5.0);
+  const [glRadius, setGLRadius] = useState(0.3);
+  const [glStiffness, setGLStiffness] = useState(50.0);
+  const [glDamping, setGLDamping] = useState(0.90);
+  const [glDispersion, setGLDispersion] = useState(0.02);
+  const [glDarkening, setGLDarkening] = useState(0.5);
+  const [glTrailLength, setGLTrailLength] = useState(1.0);
+  const [glFadeDecay, setGLFadeDecay] = useState(0.92);
+
+  // Gravity Lens Transparent State
+  const [gltBaseImage, setgltBaseImage] = useState<string | null>(null);
+  const [gltDepth, setgltDepth] = useState(0.03);
+  const [gltRadius, setgltRadius] = useState(0.08);
+  const [gltStiffness, setgltStiffness] = useState(50.0);
+  const [gltDamping, setgltDamping] = useState(0.90);
+  const [gltDispersion, setgltDispersion] = useState(0.02);
+  const [gltDarkening, setgltDarkening] = useState(0.15);
+  const [gltShading, setgltShading] = useState(0.5);
+  const [gltTrailLength, setgltTrailLength] = useState(1.0);
+  const [gltFadeDecay, setgltFadeDecay] = useState(0.92);
+
+  // Stone Press V2 (Space Ball) State
+  const [sp2BaseImage, setsp2BaseImage] = useState<string | null>(null);
+  const [sp2Depth, setsp2Depth] = useState(2.0);
+  const [sp2Radius, setsp2Radius] = useState(0.3);
+  const [sp2Stiffness, setsp2Stiffness] = useState(50.0);
+  const [sp2Damping, setsp2Damping] = useState(0.90);
+  const [sp2Darkening, setsp2Darkening] = useState(0.6);
+  const [sp2DirectionalShading, setsp2DirectionalShading] = useState(0.4);
+  const [sp2ParallaxStrength, setsp2ParallaxStrength] = useState(0.2);
+
+  // Brick Outline State
+  const [boBaseImage, setBOBaseImage] = useState<string | null>(null);
+  const [boBrickWidth, setBOBrickWidth] = useState(100.0);
+  const [boBrickHeight, setBOBrickHeight] = useState(50.0);
+  const [boLineThickness, setBOLineThickness] = useState(3.0);
+  const [boEffectRadius, setBOEffectRadius] = useState(0.20);
+  const [boEdgeSoftness, setBOEdgeSoftness] = useState(0.10);
+  const [boGlowIntensity, setBOGlowIntensity] = useState(1.0);
+  const [boOutlineColor, setBOOutlineColor] = useState('#ffffff');
+
   useEffect(() => {
-    // Load last-used global effect settings when the component mounts,
-    // then immediately push them to the backend renderer so it uses the saved values.
     const loadGlobals = async () => {
       try {
         const crSettings = await loadEffectSettings('cursor_reveal');
         if (crSettings) {
-          const bs = crSettings.brushSize ?? 160;
-          const bh = crSettings.brushHardness ?? 0.2;
-          const tl = crSettings.trailLength ?? 1.0;
-          const fs = crSettings.fadeSpeed ?? 0.035;
-          const fw = crSettings.fadeWhenResting ?? 1;
-          setBrushSize(bs);
-          setCRBrushHardness(bh);
-          setCRTrailLength(tl);
-          setCRFadeSpeed(fs);
-          setCRFadeWhenResting(fw === 1);
-          // Push to backend so renderer uses saved values from the start
-          setSetting('brushSize', bs);
-          setSetting('brushHardness', bh);
-          setSetting('trailLength', tl);
-          setSetting('fadeSpeed', fs);
-          setSetting('fadeWhenResting', fw);
+          setBrushSize(crSettings.brushSize ?? 160);
+          setCRBrushHardness(crSettings.brushHardness ?? 0.2);
+          setCRTrailLength(crSettings.trailLength ?? 1.0);
+          setCRFadeSpeed(crSettings.fadeSpeed ?? 0.035);
+          setCRFadeWhenResting((crSettings.fadeWhenResting ?? 1) === 1);
+          setSetting('brushSize', crSettings.brushSize ?? 160);
+          setSetting('brushHardness', crSettings.brushHardness ?? 0.2);
+          setSetting('trailLength', crSettings.trailLength ?? 1.0);
+          setSetting('fadeSpeed', crSettings.fadeSpeed ?? 0.035);
+          setSetting('fadeWhenResting', crSettings.fadeWhenResting ?? 1);
         }
 
         const dpSettings = await loadEffectSettings('depth_parallax');
         if (dpSettings) {
-          const ps = dpSettings.parallaxStrength ?? 0.05;
-          setParallaxStrength(ps);
-          setSetting('parallaxStrength', ps);
+          setParallaxStrength(dpSettings.parallaxStrength ?? 0.05);
+          setSetting('parallaxStrength', dpSettings.parallaxStrength ?? 0.05);
         }
 
         const glSettings = await loadEffectSettings('gravity_lens');
         if (glSettings) {
-          const ls = glSettings.lensStrength ?? 5.0;
-          const lr = glSettings.lensRadius ?? 0.3;
-          const st = glSettings.stiffness ?? 50.0;
-          const dm = glSettings.damping ?? 0.90;
-          const di = glSettings.dispersion ?? 0.02;
-          const cd = glSettings.coreDarkening ?? 0.5;
-          const gt = glSettings.trailLength ?? 1.0;
-          const fd = glSettings.fadeDecay ?? 0.92;
-          setGLStrength(ls);
-          setGLRadius(lr);
-          setGLStiffness(st);
-          setGLDamping(dm);
-          setGLDispersion(di);
-          setGLDarkening(cd);
-          setGLTrailLength(gt);
-          setGLFadeDecay(fd);
-          // NOTE: Do NOT push settings to backend here — setSetting goes to
-          // whichever plugin is currently active, NOT necessarily gravity_lens.
-          // Settings are pushed in the activation function instead.
+          setGLStrength(glSettings.lensStrength ?? 5.0);
+          setGLRadius(glSettings.lensRadius ?? 0.3);
+          setGLStiffness(glSettings.stiffness ?? 50.0);
+          setGLDamping(glSettings.damping ?? 0.90);
+          setGLDispersion(glSettings.dispersion ?? 0.02);
+          setGLDarkening(glSettings.coreDarkening ?? 0.5);
+          setGLTrailLength(glSettings.trailLength ?? 1.0);
+          setGLFadeDecay(glSettings.fadeDecay ?? 0.92);
         }
 
-        const spSettings = await loadEffectSettings('stone_press');
-        if (spSettings) {
-          // Clamp loaded values to safe ranges to prevent stale high values
-          const depth = Math.min(spSettings.pressDepth ?? 0.03, 0.15);
-          const rad = Math.min(spSettings.pressRadius ?? 0.08, 0.3);
-          const st = spSettings.stiffness ?? 50.0;
-          const dm = spSettings.damping ?? 0.90;
-          const di = spSettings.dispersion ?? 0.02;
-          const cd = spSettings.coreDarkening ?? 0.15;
-          const gt = spSettings.trailLength ?? 1.0;
-          const fd = spSettings.fadeDecay ?? 0.92;
-          setSPDepth(depth);
-          setSPRadius(rad);
-          setSPStiffness(st);
-          setSPDamping(dm);
-          setSPDispersion(di);
-          setSPDarkening(cd);
-          setSPTrailLength(gt);
-          setSPFadeDecay(fd);
-          // NOTE: Do NOT push settings to backend here — setSetting goes to
-          // whichever plugin is currently active, NOT necessarily stone_press.
-          // Settings are pushed in the activation function instead.
+        const gltSettings = await loadEffectSettings('gravity_lens_transparent');
+        if (gltSettings) {
+          setgltDepth(gltSettings.pressDepth ?? 0.03);
+          setgltRadius(gltSettings.pressRadius ?? 0.08);
+          setgltStiffness(gltSettings.stiffness ?? 50.0);
+          setgltDamping(gltSettings.damping ?? 0.90);
+          setgltDispersion(gltSettings.dispersion ?? 0.02);
+          setgltDarkening(gltSettings.coreDarkening ?? 0.15);
+          setgltShading(gltSettings.shadingStrength ?? 0.5);
+          setgltTrailLength(gltSettings.trailLength ?? 1.0);
+          setgltFadeDecay(gltSettings.fadeDecay ?? 0.92);
+        }
+
+        const sp2Settings = await loadEffectSettings('stone_press_v2');
+        if (sp2Settings) {
+          setsp2Depth(sp2Settings.pressDepth ?? 2.0);
+          setsp2Radius(sp2Settings.pressRadius ?? 0.3);
+          setsp2Stiffness(sp2Settings.stiffness ?? 50.0);
+          setsp2Damping(sp2Settings.damping ?? 0.90);
+          setsp2Darkening(sp2Settings.depthDarkening ?? 0.6);
+          setsp2DirectionalShading(sp2Settings.directionalShading ?? 0.4);
+          setsp2ParallaxStrength(sp2Settings.parallaxStrength ?? 0.2);
+        }
+
+        const boSettings = await loadEffectSettings('brick_outline');
+        if (boSettings) {
+          setBOBrickWidth(boSettings.brickWidth ?? 100.0);
+          setBOBrickHeight(boSettings.brickHeight ?? 50.0);
+          setBOLineThickness(boSettings.lineThickness ?? 3.0);
+          setBOEffectRadius(boSettings.effectRadius ?? 0.20);
+          setBOEdgeSoftness(boSettings.edgeSoftness ?? 0.10);
+          setBOGlowIntensity(boSettings.glowIntensity ?? 1.0);
+          setBOOutlineColor(boSettings.outlineColor ?? '#ffffff');
         }
       } catch (err) {
         console.error("Failed to load global effect settings:", err);
@@ -108,7 +143,6 @@ export default function Effects() {
     };
     loadGlobals();
 
-    // Flush debounced changes on page unload
     const handleBeforeUnload = () => {
       if (debounceTimer.current) {
         window.clearTimeout(debounceTimer.current);
@@ -116,49 +150,44 @@ export default function Effects() {
       }
       
       const crSettings = {
-        brushSize,
-        brushHardness: crBrushHardness,
-        trailLength: crTrailLength,
-        fadeSpeed: crFadeSpeed,
-        fadeWhenResting: crFadeWhenResting ? 1 : 0,
+        brushSize, brushHardness: crBrushHardness, trailLength: crTrailLength,
+        fadeSpeed: crFadeSpeed, fadeWhenResting: crFadeWhenResting ? 1 : 0,
       };
       saveEffectSettings('cursor_reveal', crSettings);
-      if (layerA) saveWallpaperPairing(layerA, 'cursor_reveal', crSettings);
-
+      
       saveEffectSettings('depth_parallax', { parallaxStrength });
-      if (testWallpaper) saveWallpaperPairing(testWallpaper, 'depth_parallax', { parallaxStrength });
 
       const glSettings = {
-        lensStrength: glStrength,
-        lensRadius: glRadius,
-        stiffness: glStiffness,
-        damping: glDamping,
-        dispersion: glDispersion,
-        coreDarkening: glDarkening,
-        trailLength: glTrailLength,
-        fadeDecay: glFadeDecay,
+        lensStrength: glStrength, lensRadius: glRadius, stiffness: glStiffness,
+        damping: glDamping, dispersion: glDispersion, coreDarkening: glDarkening,
+        trailLength: glTrailLength, fadeDecay: glFadeDecay,
       };
       saveEffectSettings('gravity_lens', glSettings);
-      if (glBaseImage) saveWallpaperPairing(glBaseImage, 'gravity_lens', glSettings);
 
-      const spSettings = {
-        pressDepth: spDepth,
-        pressRadius: spRadius,
-        stiffness: spStiffness,
-        damping: spDamping,
-        dispersion: spDispersion,
-        coreDarkening: spDarkening,
-        trailLength: spTrailLength,
-        fadeDecay: spFadeDecay,
+      const gltSettings = {
+        pressDepth: gltDepth, pressRadius: gltRadius, stiffness: gltStiffness,
+        damping: gltDamping, dispersion: gltDispersion, coreDarkening: gltDarkening,
+        shadingStrength: gltShading, trailLength: gltTrailLength, fadeDecay: gltFadeDecay,
       };
-      saveEffectSettings('stone_press', spSettings);
-      if (spBaseImage) saveWallpaperPairing(spBaseImage, 'stone_press', spSettings);
+      saveEffectSettings('gravity_lens_transparent', gltSettings);
+
+      const sp2Settings = {
+        pressDepth: sp2Depth, pressRadius: sp2Radius, stiffness: sp2Stiffness,
+        damping: sp2Damping, depthDarkening: sp2Darkening, directionalShading: sp2DirectionalShading,
+        parallaxStrength: sp2ParallaxStrength
+      };
+      saveEffectSettings('stone_press_v2', sp2Settings);
+
+      const boSettings = {
+        brickWidth: boBrickWidth, brickHeight: boBrickHeight, lineThickness: boLineThickness,
+        effectRadius: boEffectRadius, edgeSoftness: boEdgeSoftness, glowIntensity: boGlowIntensity,
+        outlineColor: boOutlineColor
+      };
+      saveEffectSettings('brick_outline', boSettings);
     };
 
     window.addEventListener('beforeunload', handleBeforeUnload);
-    return () => {
-      window.removeEventListener('beforeunload', handleBeforeUnload);
-    };
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
   }, []);
 
   useEffect(() => {
@@ -167,11 +196,13 @@ export default function Effects() {
         const status = await getStatus();
         if (status && status.activePlugin) {
           let uiName = status.activePlugin;
-          if (uiName.toLowerCase().includes("gravity")) uiName = "gravity_lens";
-          else if (uiName.toLowerCase().includes("stone")) uiName = "stone_press";
-          else if (uiName.toLowerCase().includes("depth")) uiName = "depth_parallax";
-          else if (uiName.toLowerCase().includes("cursor")) uiName = "cursor_reveal";
-          else if (uiName.toLowerCase().includes("none")) uiName = "none";
+          if (uiName === "stone_press_v2") uiName = "stone_press_v2";
+          else if (uiName === "gravity_lens_transparent") uiName = "gravity_lens_transparent";
+          else if (uiName === "gravity_lens") uiName = "gravity_lens";
+          else if (uiName === "depth_parallax") uiName = "depth_parallax";
+          else if (uiName === "cursor_reveal") uiName = "cursor_reveal";
+          else if (uiName === "brick_outline") uiName = "brick_outline";
+          else uiName = "none";
           
           const newActive = uiName === 'none' ? null : uiName;
           setActiveEffect(newActive);
@@ -199,7 +230,6 @@ export default function Effects() {
   const activateDepthParallax = async () => {
     if (!testWallpaper) return;
     try {
-      // The depth map is saved with "_depth.png" suffix, replacing the original extension
       const depthImage = testWallpaper.replace(/\.[^/.]+$/, "") + "_depth.png";
       await applyWallpaper(testWallpaper, depthImage);
       await setEffect('depth_parallax');
@@ -229,7 +259,6 @@ export default function Effects() {
           try {
             await generateDepthMap(newPath);
           } catch (err: any) {
-            console.error("Depth generation failed:", err);
             setDepthError("Depth generation failed: " + err.toString());
           } finally {
             setIsGeneratingDepth(false);
@@ -241,10 +270,8 @@ export default function Effects() {
     }
   };
 
-  // Cursor Reveal State
   const [layerA, setLayerA] = useState<string | null>(null);
   const [layerB, setLayerB] = useState<string | null>(null);
-
 
   const handleQualityChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     setQuality(e.target.value);
@@ -254,38 +281,19 @@ export default function Effects() {
   const handleCRSettingChange = (key: string, val: number, setter: React.Dispatch<React.SetStateAction<number>>) => {
     setter(val);
     if (debounceTimer.current) window.clearTimeout(debounceTimer.current);
-    debounceTimer.current = window.setTimeout(() => {
-        setSetting(key, val);
-        const newCRSettings = {
-          brushSize: key === 'brushSize' ? val : brushSize,
-          brushHardness: key === 'brushHardness' ? val : crBrushHardness,
-          trailLength: key === 'trailLength' ? val : crTrailLength,
-          fadeSpeed: key === 'fadeSpeed' ? val : crFadeSpeed,
-          fadeWhenResting: key === 'fadeWhenResting' ? val : (crFadeWhenResting ? 1 : 0),
-        };
-        saveEffectSettings('cursor_reveal', newCRSettings);
-        if (layerA) {
-          saveWallpaperPairing(layerA, 'cursor_reveal', newCRSettings);
-        }
-    }, 50);
+    debounceTimer.current = window.setTimeout(() => setSetting(key, val), 50);
   };
 
   const handleImport = async (setLayer: React.Dispatch<React.SetStateAction<string | null>>) => {
     const selected = await open({
       multiple: false,
-      filters: [{
-        name: 'Image',
-        extensions: ['png', 'jpeg', 'jpg', 'webp', 'bmp']
-      }]
+      filters: [{ name: 'Image', extensions: ['png', 'jpeg', 'jpg', 'webp', 'bmp'] }]
     });
-
     if (selected && typeof selected === 'string') {
       try {
         const newPath = await importWallpaper(selected);
         setLayer(newPath);
-      } catch (err) {
-        console.error("Failed to import wallpaper:", err);
-      }
+      } catch (err) {}
     }
   };
 
@@ -296,133 +304,124 @@ export default function Effects() {
       await setEffect('cursor_reveal');
       setActiveEffect('cursor_reveal');
       setSelectedEffect('cursor_reveal');
-      const crSettings = {
-        brushSize, brushHardness: crBrushHardness, trailLength: crTrailLength, fadeSpeed: crFadeSpeed, fadeWhenResting: crFadeWhenResting ? 1 : 0
-      };
-      await saveEffectSettings('cursor_reveal', crSettings);
-      await saveWallpaperPairing(layerA, 'cursor_reveal', crSettings);
       await saveActiveSession({ layerA, layerB, effect: 'cursor_reveal' });
-      for (const [k, v] of Object.entries(crSettings)) {
-        await setSetting(k, v);
-      }
-    } catch (err) {
-      console.error("Failed to activate effect", err);
-    }
+      await setSetting('brushSize', brushSize);
+      await setSetting('brushHardness', crBrushHardness);
+      await setSetting('trailLength', crTrailLength);
+      await setSetting('fadeSpeed', crFadeSpeed);
+      await setSetting('fadeWhenResting', crFadeWhenResting ? 1 : 0);
+    } catch (err) {}
   };
-
-  // Gravity Lens State
-  const [glBaseImage, setGLBaseImage] = useState<string | null>(null);
-  const [glStrength, setGLStrength] = useState(5.0);
-  const [glRadius, setGLRadius] = useState(0.3);
-  const [glStiffness, setGLStiffness] = useState(50.0);
-  const [glDamping, setGLDamping] = useState(0.90);
-  const [glDispersion, setGLDispersion] = useState(0.02);
-  const [glDarkening, setGLDarkening] = useState(0.5);
-  const [glTrailLength, setGLTrailLength] = useState(1.0);
-  const [glFadeDecay, setGLFadeDecay] = useState(0.92);
 
   const activateGravityLens = async () => {
     if (!glBaseImage) return;
     try {
-      await applyWallpaper(glBaseImage, ""); // only one layer
+      await applyWallpaper(glBaseImage, ""); 
       await setEffect('gravity_lens');
       setActiveEffect('gravity_lens');
       setSelectedEffect('gravity_lens');
-      const glSettings = {
-        lensStrength: glStrength, lensRadius: glRadius, stiffness: glStiffness,
-        damping: glDamping, dispersion: glDispersion, coreDarkening: glDarkening,
-        trailLength: glTrailLength, fadeDecay: glFadeDecay
-      };
-      await saveEffectSettings('gravity_lens', glSettings);
-      await saveWallpaperPairing(glBaseImage, 'gravity_lens', glSettings);
       await saveActiveSession({ layerA: glBaseImage, layerB: "", effect: 'gravity_lens' });
-      for (const [k, v] of Object.entries(glSettings)) {
-        await setSetting(k, v);
-      }
-    } catch (err) {
-      console.error("Failed to activate gravity lens", err);
-    }
+      await setSetting('lensStrength', glStrength);
+      await setSetting('lensRadius', glRadius);
+      await setSetting('stiffness', glStiffness);
+      await setSetting('damping', glDamping);
+      await setSetting('dispersion', glDispersion);
+      await setSetting('coreDarkening', glDarkening);
+      await setSetting('trailLength', glTrailLength);
+      await setSetting('fadeDecay', glFadeDecay);
+    } catch (err) {}
+  };
+
+  const activateGravityLensTransparent = async () => {
+    if (!gltBaseImage) return;
+    try {
+      await applyWallpaper(gltBaseImage, ""); 
+      await setEffect('gravity_lens_transparent');
+      setActiveEffect('gravity_lens_transparent');
+      setSelectedEffect('gravity_lens_transparent');
+      await saveActiveSession({ layerA: gltBaseImage, layerB: "", effect: 'gravity_lens_transparent' });
+      await setSetting('pressDepth', gltDepth);
+      await setSetting('pressRadius', gltRadius);
+      await setSetting('stiffness', gltStiffness);
+      await setSetting('damping', gltDamping);
+      await setSetting('dispersion', gltDispersion);
+      await setSetting('coreDarkening', gltDarkening);
+      await setSetting('shadingStrength', gltShading);
+      await setSetting('trailLength', gltTrailLength);
+      await setSetting('fadeDecay', gltFadeDecay);
+    } catch (err) {}
+  };
+
+  const activateStonePressV2 = async () => {
+    if (!sp2BaseImage) return;
+    try {
+      await applyWallpaper(sp2BaseImage, ""); 
+      await setEffect('stone_press_v2');
+      setActiveEffect('stone_press_v2');
+      setSelectedEffect('stone_press_v2');
+      await saveActiveSession({ layerA: sp2BaseImage, layerB: "", effect: 'stone_press_v2' });
+      await setSetting('pressDepth', sp2Depth);
+      await setSetting('pressRadius', sp2Radius);
+      await setSetting('stiffness', sp2Stiffness);
+      await setSetting('damping', sp2Damping);
+      await setSetting('depthDarkening', sp2Darkening);
+      await setSetting('directionalShading', sp2DirectionalShading);
+      await setSetting('parallaxStrength', sp2ParallaxStrength);
+    } catch (err) {}
+  };
+
+  const activateBrickOutline = async () => {
+    if (!boBaseImage) return;
+    try {
+      await applyWallpaper(boBaseImage, ""); 
+      await setEffect('brick_outline');
+      setActiveEffect('brick_outline');
+      setSelectedEffect('brick_outline');
+      await saveActiveSession({ layerA: boBaseImage, layerB: "", effect: 'brick_outline' });
+      await setSetting('brickWidth', boBrickWidth);
+      await setSetting('brickHeight', boBrickHeight);
+      await setSetting('lineThickness', boLineThickness);
+      await setSetting('effectRadius', boEffectRadius);
+      await setSetting('edgeSoftness', boEdgeSoftness);
+      await setSetting('glowIntensity', boGlowIntensity);
+    } catch (err) {}
   };
 
   const handleGLSettingChange = (key: string, val: number, setter: React.Dispatch<React.SetStateAction<number>>) => {
     setter(val);
     if (debounceTimer.current) window.clearTimeout(debounceTimer.current);
-    debounceTimer.current = window.setTimeout(() => {
-        setSetting(key, val);
-        const newGLSettings = {
-          lensStrength: key === 'lensStrength' ? val : glStrength,
-          lensRadius: key === 'lensRadius' ? val : glRadius,
-          stiffness: key === 'stiffness' ? val : glStiffness,
-          damping: key === 'damping' ? val : glDamping,
-          dispersion: key === 'dispersion' ? val : glDispersion,
-          coreDarkening: key === 'coreDarkening' ? val : glDarkening,
-          trailLength: key === 'trailLength' ? val : glTrailLength,
-          fadeDecay: key === 'fadeDecay' ? val : glFadeDecay,
-        };
-        saveEffectSettings('gravity_lens', newGLSettings);
-        if (glBaseImage) {
-          saveWallpaperPairing(glBaseImage, 'gravity_lens', newGLSettings);
-        }
-    }, 50);
+    debounceTimer.current = window.setTimeout(() => setSetting(key, val), 50);
   };
-
-  // Stone Press State
-  const [spBaseImage, setSPBaseImage] = useState<string | null>(null);
-  const [spDepth, setSPDepth] = useState(0.03);
-  const [spRadius, setSPRadius] = useState(0.08);
-  const [spStiffness, setSPStiffness] = useState(50.0);
-  const [spDamping, setSPDamping] = useState(0.90);
-  const [spDispersion, setSPDispersion] = useState(0.02);
-  const [spDarkening, setSPDarkening] = useState(0.15);
-  const [spTrailLength, setSPTrailLength] = useState(1.0);
-  const [spFadeDecay, setSPFadeDecay] = useState(0.92);
-
-  const activateStonePress = async () => {
-    if (!spBaseImage) return;
-    try {
-      await applyWallpaper(spBaseImage, ""); // only one layer
-      await setEffect('stone_press');
-      setActiveEffect('stone_press');
-      setSelectedEffect('stone_press');
-      const spSettings = {
-        pressDepth: spDepth, pressRadius: spRadius, stiffness: spStiffness,
-        damping: spDamping, dispersion: spDispersion, coreDarkening: spDarkening,
-        trailLength: spTrailLength, fadeDecay: spFadeDecay
-      };
-      await saveEffectSettings('stone_press', spSettings);
-      await saveWallpaperPairing(spBaseImage, 'stone_press', spSettings);
-      await saveActiveSession({ layerA: spBaseImage, layerB: "", effect: 'stone_press' });
-      for (const [k, v] of Object.entries(spSettings)) {
-        await setSetting(k, v);
-      }
-    } catch (err) {
-      console.error("Failed to activate stone press", err);
-    }
-  };
-
-  const handleSPSettingChange = (key: string, val: number, setter: React.Dispatch<React.SetStateAction<number>>) => {
+  const handleGLTSettingChange = (key: string, val: number, setter: React.Dispatch<React.SetStateAction<number>>) => {
     setter(val);
     if (debounceTimer.current) window.clearTimeout(debounceTimer.current);
+    debounceTimer.current = window.setTimeout(() => setSetting(key, val), 50);
+  };
+  const handleSP2SettingChange = (key: string, val: number, setter: React.Dispatch<React.SetStateAction<number>>) => {
+    setter(val);
+    if (debounceTimer.current) window.clearTimeout(debounceTimer.current);
+    debounceTimer.current = window.setTimeout(() => setSetting(key, val), 50);
+  };
+  const handleBOSettingChange = (key: string, val: number) => {
+    if (debounceTimer.current) window.clearTimeout(debounceTimer.current);
     debounceTimer.current = window.setTimeout(() => {
-        setSetting(key, val);
-        const newSPSettings = {
-          pressDepth: key === 'pressDepth' ? val : spDepth,
-          pressRadius: key === 'pressRadius' ? val : spRadius,
-          stiffness: key === 'stiffness' ? val : spStiffness,
-          damping: key === 'damping' ? val : spDamping,
-          dispersion: key === 'dispersion' ? val : spDispersion,
-          coreDarkening: key === 'coreDarkening' ? val : spDarkening,
-          trailLength: key === 'trailLength' ? val : spTrailLength,
-          fadeDecay: key === 'fadeDecay' ? val : spFadeDecay,
-        };
-        saveEffectSettings('stone_press', newSPSettings);
-        if (spBaseImage) {
-          saveWallpaperPairing(spBaseImage, 'stone_press', newSPSettings);
-        }
+      setSetting(key, val);
     }, 50);
   };
 
-  // Component specific renderers for active settings
+  const handleBOColorChange = (hex: string) => {
+    setBOOutlineColor(hex);
+    if (debounceTimer.current) window.clearTimeout(debounceTimer.current);
+    debounceTimer.current = window.setTimeout(() => {
+      const r = parseInt(hex.slice(1, 3), 16) / 255.0;
+      const g = parseInt(hex.slice(3, 5), 16) / 255.0;
+      const b = parseInt(hex.slice(5, 7), 16) / 255.0;
+      setSetting('outlineColorR', r);
+      setSetting('outlineColorG', g);
+      setSetting('outlineColorB', b);
+    }, 50);
+  };
+
   const renderQualityTier = () => (
     <div className="card" style={{marginBottom: '2rem'}}>
       <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
@@ -460,22 +459,10 @@ export default function Effects() {
             </div>
           </div>
           <div style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0 2rem'}}>
-            <div className="control-group">
-              <label>Brush Size ({brushSize}px)</label>
-              <input type="range" min="50" max="300" step="1" value={brushSize} onChange={(e) => handleCRSettingChange('brushSize', parseFloat(e.target.value), setBrushSize)} />
-            </div>
-            <div className="control-group">
-              <label>Brush Hardness ({crBrushHardness.toFixed(2)})</label>
-              <input type="range" min="0.0" max="1.0" step="0.05" value={crBrushHardness} onChange={(e) => handleCRSettingChange('brushHardness', parseFloat(e.target.value), setCRBrushHardness)} />
-            </div>
-            <div className="control-group">
-              <label>Trail Length ({crTrailLength.toFixed(1)}s)</label>
-              <input type="range" min="0.0" max="5.0" step="0.1" value={crTrailLength} onChange={(e) => handleCRSettingChange('trailLength', parseFloat(e.target.value), setCRTrailLength)} />
-            </div>
-            <div className="control-group">
-              <label>Fade Out Speed ({crFadeSpeed.toFixed(3)})</label>
-              <input type="range" min="0.005" max="0.1" step="0.005" value={crFadeSpeed} onChange={(e) => handleCRSettingChange('fadeSpeed', parseFloat(e.target.value), setCRFadeSpeed)} />
-            </div>
+            <div className="control-group"><label>Brush Size ({brushSize}px)</label><input type="range" min="50" max="300" step="1" value={brushSize} onChange={(e) => handleCRSettingChange('brushSize', parseFloat(e.target.value), setBrushSize)} /></div>
+            <div className="control-group"><label>Brush Hardness ({crBrushHardness.toFixed(2)})</label><input type="range" min="0.0" max="1.0" step="0.05" value={crBrushHardness} onChange={(e) => handleCRSettingChange('brushHardness', parseFloat(e.target.value), setCRBrushHardness)} /></div>
+            <div className="control-group"><label>Trail Length ({crTrailLength.toFixed(1)}s)</label><input type="range" min="0.0" max="5.0" step="0.1" value={crTrailLength} onChange={(e) => handleCRSettingChange('trailLength', parseFloat(e.target.value), setCRTrailLength)} /></div>
+            <div className="control-group"><label>Fade Out Speed ({crFadeSpeed.toFixed(3)})</label><input type="range" min="0.005" max="0.1" step="0.005" value={crFadeSpeed} onChange={(e) => handleCRSettingChange('fadeSpeed', parseFloat(e.target.value), setCRFadeSpeed)} /></div>
           </div>
           <div className="control-group" style={{display: 'flex', alignItems: 'center', gap: '0.75rem', marginTop: '0.5rem'}}>
             <input type="checkbox" id="crFadeResting" checked={crFadeWhenResting} onChange={(e) => {
@@ -518,27 +505,81 @@ export default function Effects() {
         </div>
       );
     }
-    if (selectedEffect === 'stone_press') {
+    if (selectedEffect === 'gravity_lens_transparent') {
       return (
         <div style={{animation: 'fadeIn 0.3s ease'}}>
           <div style={{padding: '1.25rem', background: 'rgba(0,0,0,0.4)', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.05)', marginBottom: '1.5rem'}}>
             <h4 style={{marginTop: 0, marginBottom: '0.75rem', fontWeight: 500}}>Base Wallpaper</h4>
-            <button className="secondary" onClick={() => handleImport(setSPBaseImage)}>
-              {spBaseImage ? spBaseImage.split('\\').pop() : "Import Image..."}
+            <button className="secondary" onClick={() => handleImport(setgltBaseImage)}>
+              {gltBaseImage ? gltBaseImage.split('\\').pop() : "Import Image..."}
             </button>
           </div>
           <div style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0 2rem'}}>
-            <div className="control-group"><label>Press Depth ({spDepth.toFixed(3)})</label><input type="range" min="0" max="0.15" step="0.005" value={spDepth} onChange={(e) => handleSPSettingChange('pressDepth', parseFloat(e.target.value), setSPDepth)} /></div>
-            <div className="control-group"><label>Press Radius ({spRadius.toFixed(2)})</label><input type="range" min="0.02" max="0.25" step="0.01" value={spRadius} onChange={(e) => handleSPSettingChange('pressRadius', parseFloat(e.target.value), setSPRadius)} /></div>
-            <div className="control-group"><label>Spring Stiffness ({spStiffness.toFixed(0)})</label><input type="range" min="10" max="200" step="1" value={spStiffness} onChange={(e) => handleSPSettingChange('stiffness', parseFloat(e.target.value), setSPStiffness)} /></div>
-            <div className="control-group"><label>Spring Damping ({spDamping.toFixed(2)})</label><input type="range" min="0.70" max="0.99" step="0.01" value={spDamping} onChange={(e) => handleSPSettingChange('damping', parseFloat(e.target.value), setSPDamping)} /></div>
-            <div className="control-group"><label>Chromatic Dispersion ({spDispersion.toFixed(3)})</label><input type="range" min="0" max="0.1" step="0.005" value={spDispersion} onChange={(e) => handleSPSettingChange('dispersion', parseFloat(e.target.value), setSPDispersion)} /></div>
-            <div className="control-group"><label>Trail Length ({spTrailLength.toFixed(1)}s)</label><input type="range" min="0" max="5" step="0.1" value={spTrailLength} onChange={(e) => handleSPSettingChange('trailLength', parseFloat(e.target.value), setSPTrailLength)} /></div>
-            <div className="control-group"><label>Fade Speed ({spFadeDecay >= 0.99 ? 'Never' : spFadeDecay.toFixed(2)})</label><input type="range" min="0.80" max="1.0" step="0.01" value={spFadeDecay} onChange={(e) => handleSPSettingChange('fadeDecay', parseFloat(e.target.value), setSPFadeDecay)} /></div>
+            <div className="control-group"><label>Press Depth ({gltDepth.toFixed(3)})</label><input type="range" min="0" max="0.15" step="0.005" value={gltDepth} onChange={(e) => handleGLTSettingChange('pressDepth', parseFloat(e.target.value), setgltDepth)} /></div>
+            <div className="control-group"><label>Press Radius ({gltRadius.toFixed(2)})</label><input type="range" min="0.02" max="0.25" step="0.01" value={gltRadius} onChange={(e) => handleGLTSettingChange('pressRadius', parseFloat(e.target.value), setgltRadius)} /></div>
+            <div className="control-group"><label>Spring Stiffness ({gltStiffness.toFixed(0)})</label><input type="range" min="10" max="200" step="1" value={gltStiffness} onChange={(e) => handleGLTSettingChange('stiffness', parseFloat(e.target.value), setgltStiffness)} /></div>
+            <div className="control-group"><label>Spring Damping ({gltDamping.toFixed(2)})</label><input type="range" min="0.70" max="0.99" step="0.01" value={gltDamping} onChange={(e) => handleGLTSettingChange('damping', parseFloat(e.target.value), setgltDamping)} /></div>
+            <div className="control-group"><label>Chromatic Dispersion ({gltDispersion.toFixed(3)})</label><input type="range" min="0" max="0.1" step="0.005" value={gltDispersion} onChange={(e) => handleGLTSettingChange('dispersion', parseFloat(e.target.value), setgltDispersion)} /></div>
+            <div className="control-group"><label>Core Darkening ({gltDarkening.toFixed(2)})</label><input type="range" min="0" max="1.0" step="0.05" value={gltDarkening} onChange={(e) => handleGLTSettingChange('coreDarkening', parseFloat(e.target.value), setgltDarkening)} /></div>
+            <div className="control-group"><label>Directional Shading ({gltShading.toFixed(2)})</label><input type="range" min="0" max="1.0" step="0.05" value={gltShading} onChange={(e) => handleGLTSettingChange('shadingStrength', parseFloat(e.target.value), setgltShading)} /></div>
+            <div className="control-group"><label>Trail Length ({gltTrailLength.toFixed(1)}s)</label><input type="range" min="0" max="5" step="0.1" value={gltTrailLength} onChange={(e) => handleGLTSettingChange('trailLength', parseFloat(e.target.value), setgltTrailLength)} /></div>
+            <div className="control-group"><label>Fade Speed ({gltFadeDecay >= 0.99 ? 'Never' : gltFadeDecay.toFixed(2)})</label><input type="range" min="0.80" max="1.0" step="0.01" value={gltFadeDecay} onChange={(e) => handleGLTSettingChange('fadeDecay', parseFloat(e.target.value), setgltFadeDecay)} /></div>
           </div>
           <div style={{display: 'flex', justifyContent: 'flex-end', marginTop: '1rem'}}>
-            <button className="primary" onClick={activateStonePress} disabled={!spBaseImage}>
-              {activeEffect === 'stone_press' ? 'Re-Apply Changes' : 'Activate Effect'}
+            <button className="primary" onClick={activateGravityLensTransparent} disabled={!gltBaseImage}>
+              {activeEffect === 'gravity_lens_transparent' ? 'Re-Apply Changes' : 'Activate Effect'}
+            </button>
+          </div>
+        </div>
+      );
+    }
+    if (selectedEffect === 'stone_press_v2') {
+      return (
+        <div style={{animation: 'fadeIn 0.3s ease'}}>
+          <div style={{padding: '1.25rem', background: 'rgba(0,0,0,0.4)', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.05)', marginBottom: '1.5rem'}}>
+            <h4 style={{marginTop: 0, marginBottom: '0.75rem', fontWeight: 500}}>Base Wallpaper</h4>
+            <button className="secondary" onClick={() => handleImport(setsp2BaseImage)}>
+              {sp2BaseImage ? sp2BaseImage.split('\\').pop() : "Import Image..."}
+            </button>
+          </div>
+          <div style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0 2rem'}}>
+            <div className="control-group"><label>Press Depth ({sp2Depth.toFixed(2)})</label><input type="range" min="0" max="10.0" step="0.1" value={sp2Depth} onChange={(e) => handleSP2SettingChange('pressDepth', parseFloat(e.target.value), setsp2Depth)} /></div>
+            <div className="control-group"><label>Press Radius ({sp2Radius.toFixed(2)})</label><input type="range" min="0.01" max="1.0" step="0.01" value={sp2Radius} onChange={(e) => handleSP2SettingChange('pressRadius', parseFloat(e.target.value), setsp2Radius)} /></div>
+            <div className="control-group"><label>Spring Stiffness ({sp2Stiffness.toFixed(0)})</label><input type="range" min="10" max="300" step="1" value={sp2Stiffness} onChange={(e) => handleSP2SettingChange('stiffness', parseFloat(e.target.value), setsp2Stiffness)} /></div>
+            <div className="control-group"><label>Spring Damping ({sp2Damping.toFixed(2)})</label><input type="range" min="0.70" max="0.99" step="0.01" value={sp2Damping} onChange={(e) => handleSP2SettingChange('damping', parseFloat(e.target.value), setsp2Damping)} /></div>
+            <div className="control-group"><label>Depth Darkening ({sp2Darkening.toFixed(2)})</label><input type="range" min="0" max="1.0" step="0.05" value={sp2Darkening} onChange={(e) => handleSP2SettingChange('depthDarkening', parseFloat(e.target.value), setsp2Darkening)} /></div>
+            <div className="control-group"><label>Directional Shading ({sp2DirectionalShading.toFixed(2)})</label><input type="range" min="0" max="1.0" step="0.05" value={sp2DirectionalShading} onChange={(e) => handleSP2SettingChange('directionalShading', parseFloat(e.target.value), setsp2DirectionalShading)} /></div>
+            <div className="control-group"><label>Parallax Strength ({sp2ParallaxStrength.toFixed(2)})</label><input type="range" min="0" max="1.0" step="0.05" value={sp2ParallaxStrength} onChange={(e) => handleSP2SettingChange('parallaxStrength', parseFloat(e.target.value), setsp2ParallaxStrength)} /></div>
+          </div>
+          <div style={{display: 'flex', justifyContent: 'flex-end', marginTop: '1rem'}}>
+            <button className="primary" onClick={activateStonePressV2} disabled={!sp2BaseImage}>
+              {activeEffect === 'stone_press_v2' ? 'Re-Apply Changes' : 'Activate Effect'}
+            </button>
+          </div>
+        </div>
+      );
+    }
+    if (selectedEffect === 'brick_outline') {
+      return (
+        <div style={{animation: 'fadeIn 0.3s ease'}}>
+          <div style={{padding: '1.25rem', background: 'rgba(0,0,0,0.4)', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.05)', marginBottom: '1.5rem'}}>
+            <h4 style={{marginTop: 0, marginBottom: '0.75rem', fontWeight: 500}}>Base Wallpaper</h4>
+            <button className="secondary" onClick={() => handleImport(setBOBaseImage)}>
+              {boBaseImage ? boBaseImage.split('\\').pop() : "Import Image..."}
+            </button>
+          </div>
+          <div style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0 2rem'}}>
+            <div className="control-group"><label>Brick Width ({boBrickWidth.toFixed(1)})</label><input type="range" min="10" max="300" step="1" value={boBrickWidth} onChange={(e) => { const v = parseFloat(e.target.value); setBOBrickWidth(v); handleBOSettingChange('brickWidth', v); }} /></div>
+            <div className="control-group"><label>Brick Height ({boBrickHeight.toFixed(1)})</label><input type="range" min="10" max="300" step="1" value={boBrickHeight} onChange={(e) => { const v = parseFloat(e.target.value); setBOBrickHeight(v); handleBOSettingChange('brickHeight', v); }} /></div>
+            <div className="control-group"><label>Line Thickness ({boLineThickness.toFixed(1)})</label><input type="range" min="0.5" max="10" step="0.1" value={boLineThickness} onChange={(e) => { const v = parseFloat(e.target.value); setBOLineThickness(v); handleBOSettingChange('lineThickness', v); }} /></div>
+            <div className="control-group"><label>Effect Radius ({boEffectRadius.toFixed(2)})</label><input type="range" min="0.01" max="1.0" step="0.01" value={boEffectRadius} onChange={(e) => { const v = parseFloat(e.target.value); setBOEffectRadius(v); handleBOSettingChange('effectRadius', v); }} /></div>
+            <div className="control-group"><label>Edge Softness ({boEdgeSoftness.toFixed(2)})</label><input type="range" min="0.0" max="0.5" step="0.01" value={boEdgeSoftness} onChange={(e) => { const v = parseFloat(e.target.value); setBOEdgeSoftness(v); handleBOSettingChange('edgeSoftness', v); }} /></div>
+            <div className="control-group"><label>Glow Intensity ({boGlowIntensity.toFixed(2)})</label><input type="range" min="0.0" max="3.0" step="0.1" value={boGlowIntensity} onChange={(e) => { const v = parseFloat(e.target.value); setBOGlowIntensity(v); handleBOSettingChange('glowIntensity', v); }} /></div>
+            <div className="control-group" style={{ gridColumn: '1 / -1' }}><label>Outline Color</label><input type="color" value={boOutlineColor} onChange={(e) => handleBOColorChange(e.target.value)} style={{ width: '100%', height: '40px', padding: 0, border: 'none', background: 'transparent', cursor: 'pointer' }} /></div>
+          </div>
+          <div style={{display: 'flex', justifyContent: 'flex-end', marginTop: '1rem'}}>
+            <button className="primary" onClick={activateBrickOutline} disabled={!boBaseImage}>
+              {activeEffect === 'brick_outline' ? 'Re-Apply Changes' : 'Activate Effect'}
             </button>
           </div>
         </div>
@@ -563,8 +604,6 @@ export default function Effects() {
               if (debounceTimer.current) window.clearTimeout(debounceTimer.current);
               debounceTimer.current = window.setTimeout(() => {
                 setSetting('parallaxStrength', val);
-                saveEffectSettings('depth_parallax', { parallaxStrength: val });
-                if (testWallpaper) saveWallpaperPairing(testWallpaper, 'depth_parallax', { parallaxStrength: val });
               }, 50);
             }} />
           </div>
@@ -636,14 +675,36 @@ export default function Effects() {
           </div>
         </div>
 
-        <div className={`effect-card ${selectedEffect === 'stone_press' ? 'active' : ''}`} onClick={() => setSelectedEffect('stone_press')}>
+        <div className={`effect-card ${selectedEffect === 'gravity_lens_transparent' ? 'active' : ''}`} onClick={() => setSelectedEffect('gravity_lens_transparent')}>
           <div className="effect-card-thumb">
-            <img src="https://images.unsplash.com/photo-1518640467707-6811f4a6ab73?q=80&w=600&auto=format&fit=crop" alt="Stone Press" />
-            {activeEffect === 'stone_press' && <div style={{position: 'absolute', top: '10px', right: '10px', background: 'var(--accent)', color: '#000', padding: '0.15rem 0.5rem', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 700}}>RUNNING</div>}
+            <img src="https://images.unsplash.com/photo-1518640467707-6811f4a6ab73?q=80&w=600&auto=format&fit=crop" alt="Gravity Lens - Transparent" />
+            {activeEffect === 'gravity_lens_transparent' && <div style={{position: 'absolute', top: '10px', right: '10px', background: 'var(--accent)', color: '#000', padding: '0.15rem 0.5rem', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 700}}>RUNNING</div>}
           </div>
           <div className="effect-card-content">
-            <h3>Stone Press</h3>
+            <h3>Gravity Lens - Transparent</h3>
             <p>The cursor presses inward like a heavy stone on fabric, creating a concave dimple.</p>
+          </div>
+        </div>
+
+        <div className={`effect-card ${selectedEffect === 'stone_press_v2' ? 'active' : ''}`} onClick={() => setSelectedEffect('stone_press_v2')}>
+          <div className="effect-card-thumb">
+            <img src="https://images.unsplash.com/photo-1518640467707-6811f4a6ab73?q=80&w=600&auto=format&fit=crop" alt="Space Ball" />
+            {activeEffect === 'stone_press_v2' && <div style={{position: 'absolute', top: '10px', right: '10px', background: 'var(--accent)', color: '#000', padding: '0.15rem 0.5rem', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 700}}>RUNNING</div>}
+          </div>
+          <div className="effect-card-content">
+            <h3>Space Ball</h3>
+            <p>The cursor presses inward like a heavy stone on fabric, using physical height-field simulation.</p>
+          </div>
+        </div>
+
+        <div className={`effect-card ${selectedEffect === 'brick_outline' ? 'active' : ''}`} onClick={() => setSelectedEffect('brick_outline')}>
+          <div className="effect-card-thumb">
+            <img src="https://images.unsplash.com/photo-1518640467707-6811f4a6ab73?q=80&w=600&auto=format&fit=crop" alt="Brick Outline" />
+            {activeEffect === 'brick_outline' && <div style={{position: 'absolute', top: '10px', right: '10px', background: 'var(--accent)', color: '#000', padding: '0.15rem 0.5rem', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 700}}>RUNNING</div>}
+          </div>
+          <div className="effect-card-content">
+            <h3>Brick Outline</h3>
+            <p>Glowing procedural running-bond brick pattern overlaid on the wallpaper.</p>
           </div>
         </div>
 

@@ -7,6 +7,7 @@ import Effects from './pages/Effects';
 import Settings from './pages/Settings';
 import { useEffect } from 'react';
 import About from './pages/About';
+import Gallery from './pages/Gallery';
 import { loadSettings, applySettingsToBackend, getActiveSession, loadEffectSettings } from './store';
 import { applyWallpaper, setEffect, setSetting } from './ipc';
 
@@ -33,25 +34,32 @@ function App() {
   }, []);
   return (
     <Router>
-      <div className="sidebar">
-        <h1>
+      <div className="top-bar">
+        <h1 className="brand">
           <Layers className="brand-icon" size={24} />
           <span className="brand-text">Interact<span className="brand-accent">Wall</span></span>
         </h1>
-        <NavLink to="/effects" className={({isActive}) => `nav-link ${isActive ? 'active' : ''}`}>
-          <Wand2 size={20} /> Effects
-        </NavLink>
-        <NavLink to="/settings" className={({isActive}) => `nav-link ${isActive ? 'active' : ''}`}>
-          <SettingsIcon size={20} /> Settings
-        </NavLink>
-        <NavLink to="/about" className={({isActive}) => `nav-link ${isActive ? 'active' : ''}`}>
-          <Info size={20} /> About
-        </NavLink>
+        <div className="nav-capsule">
+          <NavLink to="/gallery" className={({isActive}) => `nav-link ${isActive ? 'active' : ''}`}>
+            <Layers size={18} /> Gallery
+          </NavLink>
+          <NavLink to="/effects" className={({isActive}) => `nav-link ${isActive ? 'active' : ''}`}>
+            <Wand2 size={18} /> Effects
+          </NavLink>
+          <NavLink to="/settings" className={({isActive}) => `nav-link ${isActive ? 'active' : ''}`}>
+            <SettingsIcon size={18} /> Settings
+          </NavLink>
+          <NavLink to="/about" className={({isActive}) => `nav-link ${isActive ? 'active' : ''}`}>
+            <Info size={18} /> About
+          </NavLink>
+        </div>
+        <div style={{width: '150px'}}></div> {/* Spacer for centering capsule */}
       </div>
       
       <div className="content">
         <Routes>
           <Route path="/" element={<Navigate to="/effects" replace />} />
+          <Route path="/gallery" element={<Gallery />} />
           <Route path="/effects" element={<Effects />} />
           <Route path="/settings" element={<Settings />} />
           <Route path="/about" element={<About />} />

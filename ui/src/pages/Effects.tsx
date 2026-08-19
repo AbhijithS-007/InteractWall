@@ -1,7 +1,8 @@
 import { useState, useRef, useEffect } from 'react';
-import { setEffect, removeEffect, setSetting, setQualityTier, applyWallpaper, importWallpaper, generateDepthMap, getStatus } from '../ipc';
-import { saveWallpaperPairing, loadEffectSettings, saveEffectSettings, saveActiveSession } from '../store';
+import { setEffect, removeEffect, quitRenderer, setSetting, setQualityTier, applyWallpaper, importWallpaper, generateDepthMap, getStatus, listWallpapers } from '../ipc';
+import { saveWallpaperPairing, loadEffectSettings, saveEffectSettings, saveActiveSession, getActiveSession } from '../store';
 import { open } from '@tauri-apps/plugin-dialog';
+import { convertFileSrc } from '@tauri-apps/api/core';
 
 export default function Effects() {
   const [quality, setQuality] = useState('balanced');
@@ -24,6 +25,7 @@ export default function Effects() {
   // Unified effect tracker
   const [activeEffect, setActiveEffect] = useState<string | null>(null); // Actual running effect
   const [selectedEffect, setSelectedEffect] = useState<string | null>(null); // Effect being configured in Hero
+  const [isGalleryCollage, setIsGalleryCollage] = useState(false);
 
   // Gravity Lens State
   const [glBaseImage, setGLBaseImage] = useState<string | null>(null);
@@ -137,6 +139,24 @@ export default function Effects() {
           setBOGlowIntensity(boSettings.glowIntensity ?? 1.0);
           setBOOutlineColor(boSettings.outlineColor ?? '#ffffff');
         }
+
+        const session = await getActiveSession();
+        if (session) {
+          setIsGalleryCollage(!!session.isGalleryCollage);
+          if (session.isGalleryCollage && session.layerA) {
+            setGLBaseImage(session.layerA);
+            setgltBaseImage(session.layerA);
+            setsp2BaseImage(session.layerA);
+            setBOBaseImage(session.layerA);
+            if (session.effect !== "cursor_reveal") {
+              setLayerA(session.layerA);
+            }
+          }
+          if (session.effect === "cursor_reveal") {
+            setLayerA(session.layerA);
+            setLayerB(session.layerB);
+          }
+        }
       } catch (err) {
         console.error("Failed to load global effect settings:", err);
       }
@@ -195,7 +215,7 @@ export default function Effects() {
       try {
         const status = await getStatus();
         if (status && status.activePlugin) {
-          let uiName = status.activePlugin;
+          let uiName = status.activePlugin.replace('.dll', '');
           if (uiName === "stone_press_v2") uiName = "stone_press_v2";
           else if (uiName === "gravity_lens_transparent") uiName = "gravity_lens_transparent";
           else if (uiName === "gravity_lens") uiName = "gravity_lens";
@@ -217,13 +237,29 @@ export default function Effects() {
     return () => clearInterval(interval);
   }, []);
 
+  useEffect(() => {
+    // Removed strict isGalleryCollage lock on cursor_reveal
+  }, [isGalleryCollage, selectedEffect]);
+
   const handleRemoveEffect = async () => {
     try {
       await removeEffect();
       setActiveEffect(null);
       await saveActiveSession(null);
-    } catch (err) {
+    } catch (err: any) {
       console.error("Failed to remove effect", err);
+      alert(`Failed to remove effect: ${err.toString()}`);
+    }
+  };
+
+  const handleStopWallpaper = async () => {
+    try {
+      await quitRenderer();
+      setActiveEffect(null);
+      await saveActiveSession(null);
+    } catch (err: any) {
+      console.error("Failed to stop wallpaper", err);
+      alert(`Failed to stop wallpaper: ${err.toString()}`);
     }
   };
 
@@ -236,39 +272,15 @@ export default function Effects() {
       setActiveEffect('depth_parallax');
       setSelectedEffect('depth_parallax');
       await saveWallpaperPairing(testWallpaper, 'depth_parallax', { parallaxStrength });
-      await saveActiveSession({ layerA: testWallpaper, layerB: depthImage, effect: 'depth_parallax' });
+      await saveActiveSession({ layerA: testWallpaper, layerB: depthImage, effect: 'depth_parallax', isGalleryCollage });
       await setSetting('parallaxStrength', parallaxStrength);
-    } catch (err) {
+    } catch (err: any) {
       console.error("Failed to activate depth parallax", err);
+      alert(`Failed to activate effect: ${err.toString()}`);
     }
   };
 
-  const handleDepthImport = async () => {
-    const selected = await open({
-      multiple: false,
-      filters: [{ name: 'Image', extensions: ['png', 'jpeg', 'jpg', 'webp', 'bmp'] }]
-    });
 
-    if (selected && typeof selected === 'string') {
-      try {
-        setDepthError(null);
-        const newPath = await importWallpaper(selected);
-        setTestWallpaper(newPath);
-        if (newPath) {
-          setIsGeneratingDepth(true);
-          try {
-            await generateDepthMap(newPath);
-          } catch (err: any) {
-            setDepthError("Depth generation failed: " + err.toString());
-          } finally {
-            setIsGeneratingDepth(false);
-          }
-        }
-      } catch (err) {
-        console.error("Failed to import wallpaper:", err);
-      }
-    }
-  };
 
   const [layerA, setLayerA] = useState<string | null>(null);
   const [layerB, setLayerB] = useState<string | null>(null);
@@ -284,7 +296,22 @@ export default function Effects() {
     debounceTimer.current = window.setTimeout(() => setSetting(key, val), 50);
   };
 
-  const handleImport = async (setLayer: React.Dispatch<React.SetStateAction<string | null>>) => {
+  const [showImportPickerFor, setShowImportPickerFor] = useState<{setter: React.Dispatch<React.SetStateAction<string | null>>, effectType: string, onComplete?: (path: string) => void} | null>(null);
+  const [pickerWallpapers, setPickerWallpapers] = useState<string[]>([]);
+  const [pickerSource, setPickerSource] = useState<'options' | 'gallery'>('options');
+
+  const handleImport = async (setLayer: React.Dispatch<React.SetStateAction<string | null>>, effectType: string, onComplete?: (path: string) => void) => {
+    setShowImportPickerFor({setter: setLayer, effectType, onComplete});
+    setPickerSource('options');
+    try {
+      const list = await listWallpapers();
+      setPickerWallpapers(list);
+    } catch (err) {
+      setPickerWallpapers([]);
+    }
+  };
+
+  const executeNativeImport = async (setLayer: React.Dispatch<React.SetStateAction<string | null>>, onComplete?: (path: string) => void) => {
     const selected = await open({
       multiple: false,
       filters: [{ name: 'Image', extensions: ['png', 'jpeg', 'jpg', 'webp', 'bmp'] }]
@@ -293,7 +320,10 @@ export default function Effects() {
       try {
         const newPath = await importWallpaper(selected);
         setLayer(newPath);
-      } catch (err) {}
+        onComplete?.(newPath);
+      } catch (err) {
+        console.error("Failed to import wallpaper:", err);
+      }
     }
   };
 
@@ -304,13 +334,15 @@ export default function Effects() {
       await setEffect('cursor_reveal');
       setActiveEffect('cursor_reveal');
       setSelectedEffect('cursor_reveal');
-      await saveActiveSession({ layerA, layerB, effect: 'cursor_reveal' });
+      await saveActiveSession({ layerA, layerB, effect: 'cursor_reveal', isGalleryCollage });
       await setSetting('brushSize', brushSize);
       await setSetting('brushHardness', crBrushHardness);
       await setSetting('trailLength', crTrailLength);
       await setSetting('fadeSpeed', crFadeSpeed);
       await setSetting('fadeWhenResting', crFadeWhenResting ? 1 : 0);
-    } catch (err) {}
+    } catch (err: any) {
+      alert(`Failed to activate effect: ${err.toString()}`);
+    }
   };
 
   const activateGravityLens = async () => {
@@ -320,7 +352,7 @@ export default function Effects() {
       await setEffect('gravity_lens');
       setActiveEffect('gravity_lens');
       setSelectedEffect('gravity_lens');
-      await saveActiveSession({ layerA: glBaseImage, layerB: "", effect: 'gravity_lens' });
+      await saveActiveSession({ layerA: glBaseImage, layerB: "", effect: 'gravity_lens', isGalleryCollage });
       await setSetting('lensStrength', glStrength);
       await setSetting('lensRadius', glRadius);
       await setSetting('stiffness', glStiffness);
@@ -339,7 +371,7 @@ export default function Effects() {
       await setEffect('gravity_lens_transparent');
       setActiveEffect('gravity_lens_transparent');
       setSelectedEffect('gravity_lens_transparent');
-      await saveActiveSession({ layerA: gltBaseImage, layerB: "", effect: 'gravity_lens_transparent' });
+      await saveActiveSession({ layerA: gltBaseImage, layerB: "", effect: 'gravity_lens_transparent', isGalleryCollage });
       await setSetting('pressDepth', gltDepth);
       await setSetting('pressRadius', gltRadius);
       await setSetting('stiffness', gltStiffness);
@@ -359,7 +391,7 @@ export default function Effects() {
       await setEffect('stone_press_v2');
       setActiveEffect('stone_press_v2');
       setSelectedEffect('stone_press_v2');
-      await saveActiveSession({ layerA: sp2BaseImage, layerB: "", effect: 'stone_press_v2' });
+      await saveActiveSession({ layerA: sp2BaseImage, layerB: "", effect: 'stone_press_v2', isGalleryCollage });
       await setSetting('pressDepth', sp2Depth);
       await setSetting('pressRadius', sp2Radius);
       await setSetting('stiffness', sp2Stiffness);
@@ -377,7 +409,7 @@ export default function Effects() {
       await setEffect('brick_outline');
       setActiveEffect('brick_outline');
       setSelectedEffect('brick_outline');
-      await saveActiveSession({ layerA: boBaseImage, layerB: "", effect: 'brick_outline' });
+      await saveActiveSession({ layerA: boBaseImage, layerB: "", effect: 'brick_outline', isGalleryCollage });
       await setSetting('brickWidth', boBrickWidth);
       await setSetting('brickHeight', boBrickHeight);
       await setSetting('lineThickness', boLineThickness);
@@ -447,22 +479,22 @@ export default function Effects() {
           <div style={{display: 'flex', gap: '1rem', marginBottom: '1.5rem'}}>
             <div style={{flex: 1, padding: '1.25rem', background: 'rgba(0,0,0,0.4)', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.05)'}}>
               <h4 style={{marginTop: 0, marginBottom: '0.75rem', fontWeight: 500}}>Layer A (Background)</h4>
-              <button className="secondary" onClick={() => handleImport(setLayerA)} style={{width: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap'}}>
+              <button className="secondary" onClick={() => handleImport(setLayerA, 'cursor_reveal')} style={{width: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap'}}>
                 {layerA ? layerA.split('\\').pop() : "Import Image..."}
               </button>
             </div>
             <div style={{flex: 1, padding: '1.25rem', background: 'rgba(0,0,0,0.4)', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.05)'}}>
               <h4 style={{marginTop: 0, marginBottom: '0.75rem', fontWeight: 500}}>Layer B (Reveal)</h4>
-              <button className="secondary" onClick={() => handleImport(setLayerB)} style={{width: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap'}}>
+              <button className="secondary" onClick={() => handleImport(setLayerB, 'cursor_reveal')} style={{width: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap'}}>
                 {layerB ? layerB.split('\\').pop() : "Import Image..."}
               </button>
             </div>
           </div>
           <div style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0 2rem'}}>
-            <div className="control-group"><label>Brush Size ({brushSize}px)</label><input type="range" min="50" max="300" step="1" value={brushSize} onChange={(e) => handleCRSettingChange('brushSize', parseFloat(e.target.value), setBrushSize)} /></div>
-            <div className="control-group"><label>Brush Hardness ({crBrushHardness.toFixed(2)})</label><input type="range" min="0.0" max="1.0" step="0.05" value={crBrushHardness} onChange={(e) => handleCRSettingChange('brushHardness', parseFloat(e.target.value), setCRBrushHardness)} /></div>
-            <div className="control-group"><label>Trail Length ({crTrailLength.toFixed(1)}s)</label><input type="range" min="0.0" max="5.0" step="0.1" value={crTrailLength} onChange={(e) => handleCRSettingChange('trailLength', parseFloat(e.target.value), setCRTrailLength)} /></div>
-            <div className="control-group"><label>Fade Out Speed ({crFadeSpeed.toFixed(3)})</label><input type="range" min="0.005" max="0.1" step="0.005" value={crFadeSpeed} onChange={(e) => handleCRSettingChange('fadeSpeed', parseFloat(e.target.value), setCRFadeSpeed)} /></div>
+            <div className="control-group"><label>Brush Size ({brushSize}px)</label><input type="range" min="50" max="300" step="0.1" value={brushSize} onChange={(e) => handleCRSettingChange('brushSize', parseFloat(e.target.value), setBrushSize)} /></div>
+            <div className="control-group"><label>Brush Hardness ({crBrushHardness.toFixed(2)})</label><input type="range" min="0.0" max="1.0" step="0.001" value={crBrushHardness} onChange={(e) => handleCRSettingChange('brushHardness', parseFloat(e.target.value), setCRBrushHardness)} /></div>
+            <div className="control-group"><label>Trail Length ({crTrailLength.toFixed(1)}s)</label><input type="range" min="0.0" max="5.0" step="0.01" value={crTrailLength} onChange={(e) => handleCRSettingChange('trailLength', parseFloat(e.target.value), setCRTrailLength)} /></div>
+            <div className="control-group"><label>Fade Out Speed ({crFadeSpeed.toFixed(3)})</label><input type="range" min="0.005" max="0.1" step="0.001" value={crFadeSpeed} onChange={(e) => handleCRSettingChange('fadeSpeed', parseFloat(e.target.value), setCRFadeSpeed)} /></div>
           </div>
           <div className="control-group" style={{display: 'flex', alignItems: 'center', gap: '0.75rem', marginTop: '0.5rem'}}>
             <input type="checkbox" id="crFadeResting" checked={crFadeWhenResting} onChange={(e) => {
@@ -484,18 +516,18 @@ export default function Effects() {
         <div style={{animation: 'fadeIn 0.3s ease'}}>
           <div style={{padding: '1.25rem', background: 'rgba(0,0,0,0.4)', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.05)', marginBottom: '1.5rem'}}>
             <h4 style={{marginTop: 0, marginBottom: '0.75rem', fontWeight: 500}}>Base Wallpaper</h4>
-            <button className="secondary" onClick={() => handleImport(setGLBaseImage)}>
+            <button className="secondary" onClick={() => handleImport(setGLBaseImage, 'gravity_lens')}>
               {glBaseImage ? glBaseImage.split('\\').pop() : "Import Image..."}
             </button>
           </div>
           <div style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0 2rem'}}>
-            <div className="control-group"><label>Lens Strength ({glStrength.toFixed(1)})</label><input type="range" min="0" max="20" step="0.5" value={glStrength} onChange={(e) => handleGLSettingChange('lensStrength', parseFloat(e.target.value), setGLStrength)} /></div>
-            <div className="control-group"><label>Lens Radius ({glRadius.toFixed(2)})</label><input type="range" min="0.1" max="1.0" step="0.05" value={glRadius} onChange={(e) => handleGLSettingChange('lensRadius', parseFloat(e.target.value), setGLRadius)} /></div>
-            <div className="control-group"><label>Spring Stiffness ({glStiffness.toFixed(0)})</label><input type="range" min="10" max="200" step="1" value={glStiffness} onChange={(e) => handleGLSettingChange('stiffness', parseFloat(e.target.value), setGLStiffness)} /></div>
-            <div className="control-group"><label>Spring Damping ({glDamping.toFixed(2)})</label><input type="range" min="0.70" max="0.99" step="0.01" value={glDamping} onChange={(e) => handleGLSettingChange('damping', parseFloat(e.target.value), setGLDamping)} /></div>
-            <div className="control-group"><label>Chromatic Dispersion ({glDispersion.toFixed(3)})</label><input type="range" min="0" max="0.1" step="0.005" value={glDispersion} onChange={(e) => handleGLSettingChange('dispersion', parseFloat(e.target.value), setGLDispersion)} /></div>
-            <div className="control-group"><label>Trail Length ({glTrailLength.toFixed(1)}s)</label><input type="range" min="0" max="5" step="0.1" value={glTrailLength} onChange={(e) => handleGLSettingChange('trailLength', parseFloat(e.target.value), setGLTrailLength)} /></div>
-            <div className="control-group"><label>Fade Speed ({glFadeDecay >= 0.99 ? 'Never' : glFadeDecay.toFixed(2)})</label><input type="range" min="0.80" max="1.0" step="0.01" value={glFadeDecay} onChange={(e) => handleGLSettingChange('fadeDecay', parseFloat(e.target.value), setGLFadeDecay)} /></div>
+            <div className="control-group"><label>Lens Strength ({glStrength.toFixed(1)})</label><input type="range" min="0" max="20" step="0.01" value={glStrength} onChange={(e) => handleGLSettingChange('lensStrength', parseFloat(e.target.value), setGLStrength)} /></div>
+            <div className="control-group"><label>Lens Radius ({glRadius.toFixed(2)})</label><input type="range" min="0.1" max="1.0" step="0.001" value={glRadius} onChange={(e) => handleGLSettingChange('lensRadius', parseFloat(e.target.value), setGLRadius)} /></div>
+            <div className="control-group"><label>Spring Stiffness ({glStiffness.toFixed(0)})</label><input type="range" min="10" max="200" step="0.1" value={glStiffness} onChange={(e) => handleGLSettingChange('stiffness', parseFloat(e.target.value), setGLStiffness)} /></div>
+            <div className="control-group"><label>Spring Damping ({glDamping.toFixed(2)})</label><input type="range" min="0.70" max="0.99" step="0.001" value={glDamping} onChange={(e) => handleGLSettingChange('damping', parseFloat(e.target.value), setGLDamping)} /></div>
+            <div className="control-group"><label>Chromatic Dispersion ({glDispersion.toFixed(3)})</label><input type="range" min="0" max="0.1" step="0.001" value={glDispersion} onChange={(e) => handleGLSettingChange('dispersion', parseFloat(e.target.value), setGLDispersion)} /></div>
+            <div className="control-group"><label>Trail Length ({glTrailLength.toFixed(1)}s)</label><input type="range" min="0" max="5" step="0.01" value={glTrailLength} onChange={(e) => handleGLSettingChange('trailLength', parseFloat(e.target.value), setGLTrailLength)} /></div>
+            <div className="control-group"><label>Fade Speed ({glFadeDecay >= 0.99 ? 'Never' : glFadeDecay.toFixed(2)})</label><input type="range" min="0.80" max="1.0" step="0.001" value={glFadeDecay} onChange={(e) => handleGLSettingChange('fadeDecay', parseFloat(e.target.value), setGLFadeDecay)} /></div>
           </div>
           <div style={{display: 'flex', justifyContent: 'flex-end', marginTop: '1rem'}}>
             <button className="primary" onClick={activateGravityLens} disabled={!glBaseImage}>
@@ -510,20 +542,20 @@ export default function Effects() {
         <div style={{animation: 'fadeIn 0.3s ease'}}>
           <div style={{padding: '1.25rem', background: 'rgba(0,0,0,0.4)', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.05)', marginBottom: '1.5rem'}}>
             <h4 style={{marginTop: 0, marginBottom: '0.75rem', fontWeight: 500}}>Base Wallpaper</h4>
-            <button className="secondary" onClick={() => handleImport(setgltBaseImage)}>
+            <button className="secondary" onClick={() => handleImport(setgltBaseImage, 'gravity_lens_transparent')}>
               {gltBaseImage ? gltBaseImage.split('\\').pop() : "Import Image..."}
             </button>
           </div>
           <div style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0 2rem'}}>
-            <div className="control-group"><label>Press Depth ({gltDepth.toFixed(3)})</label><input type="range" min="0" max="0.15" step="0.005" value={gltDepth} onChange={(e) => handleGLTSettingChange('pressDepth', parseFloat(e.target.value), setgltDepth)} /></div>
-            <div className="control-group"><label>Press Radius ({gltRadius.toFixed(2)})</label><input type="range" min="0.02" max="0.25" step="0.01" value={gltRadius} onChange={(e) => handleGLTSettingChange('pressRadius', parseFloat(e.target.value), setgltRadius)} /></div>
-            <div className="control-group"><label>Spring Stiffness ({gltStiffness.toFixed(0)})</label><input type="range" min="10" max="200" step="1" value={gltStiffness} onChange={(e) => handleGLTSettingChange('stiffness', parseFloat(e.target.value), setgltStiffness)} /></div>
-            <div className="control-group"><label>Spring Damping ({gltDamping.toFixed(2)})</label><input type="range" min="0.70" max="0.99" step="0.01" value={gltDamping} onChange={(e) => handleGLTSettingChange('damping', parseFloat(e.target.value), setgltDamping)} /></div>
-            <div className="control-group"><label>Chromatic Dispersion ({gltDispersion.toFixed(3)})</label><input type="range" min="0" max="0.1" step="0.005" value={gltDispersion} onChange={(e) => handleGLTSettingChange('dispersion', parseFloat(e.target.value), setgltDispersion)} /></div>
-            <div className="control-group"><label>Core Darkening ({gltDarkening.toFixed(2)})</label><input type="range" min="0" max="1.0" step="0.05" value={gltDarkening} onChange={(e) => handleGLTSettingChange('coreDarkening', parseFloat(e.target.value), setgltDarkening)} /></div>
-            <div className="control-group"><label>Directional Shading ({gltShading.toFixed(2)})</label><input type="range" min="0" max="1.0" step="0.05" value={gltShading} onChange={(e) => handleGLTSettingChange('shadingStrength', parseFloat(e.target.value), setgltShading)} /></div>
-            <div className="control-group"><label>Trail Length ({gltTrailLength.toFixed(1)}s)</label><input type="range" min="0" max="5" step="0.1" value={gltTrailLength} onChange={(e) => handleGLTSettingChange('trailLength', parseFloat(e.target.value), setgltTrailLength)} /></div>
-            <div className="control-group"><label>Fade Speed ({gltFadeDecay >= 0.99 ? 'Never' : gltFadeDecay.toFixed(2)})</label><input type="range" min="0.80" max="1.0" step="0.01" value={gltFadeDecay} onChange={(e) => handleGLTSettingChange('fadeDecay', parseFloat(e.target.value), setgltFadeDecay)} /></div>
+            <div className="control-group"><label>Press Depth ({gltDepth.toFixed(3)})</label><input type="range" min="0" max="0.15" step="0.001" value={gltDepth} onChange={(e) => handleGLTSettingChange('pressDepth', parseFloat(e.target.value), setgltDepth)} /></div>
+            <div className="control-group"><label>Press Radius ({gltRadius.toFixed(2)})</label><input type="range" min="0.02" max="0.25" step="0.001" value={gltRadius} onChange={(e) => handleGLTSettingChange('pressRadius', parseFloat(e.target.value), setgltRadius)} /></div>
+            <div className="control-group"><label>Spring Stiffness ({gltStiffness.toFixed(0)})</label><input type="range" min="10" max="200" step="0.1" value={gltStiffness} onChange={(e) => handleGLTSettingChange('stiffness', parseFloat(e.target.value), setgltStiffness)} /></div>
+            <div className="control-group"><label>Spring Damping ({gltDamping.toFixed(2)})</label><input type="range" min="0.70" max="0.99" step="0.001" value={gltDamping} onChange={(e) => handleGLTSettingChange('damping', parseFloat(e.target.value), setgltDamping)} /></div>
+            <div className="control-group"><label>Chromatic Dispersion ({gltDispersion.toFixed(3)})</label><input type="range" min="0" max="0.1" step="0.001" value={gltDispersion} onChange={(e) => handleGLTSettingChange('dispersion', parseFloat(e.target.value), setgltDispersion)} /></div>
+            <div className="control-group"><label>Core Darkening ({gltDarkening.toFixed(2)})</label><input type="range" min="0" max="1.0" step="0.001" value={gltDarkening} onChange={(e) => handleGLTSettingChange('coreDarkening', parseFloat(e.target.value), setgltDarkening)} /></div>
+            <div className="control-group"><label>Directional Shading ({gltShading.toFixed(2)})</label><input type="range" min="0" max="1.0" step="0.001" value={gltShading} onChange={(e) => handleGLTSettingChange('shadingStrength', parseFloat(e.target.value), setgltShading)} /></div>
+            <div className="control-group"><label>Trail Length ({gltTrailLength.toFixed(1)}s)</label><input type="range" min="0" max="5" step="0.01" value={gltTrailLength} onChange={(e) => handleGLTSettingChange('trailLength', parseFloat(e.target.value), setgltTrailLength)} /></div>
+            <div className="control-group"><label>Fade Speed ({gltFadeDecay >= 0.99 ? 'Never' : gltFadeDecay.toFixed(2)})</label><input type="range" min="0.80" max="1.0" step="0.001" value={gltFadeDecay} onChange={(e) => handleGLTSettingChange('fadeDecay', parseFloat(e.target.value), setgltFadeDecay)} /></div>
           </div>
           <div style={{display: 'flex', justifyContent: 'flex-end', marginTop: '1rem'}}>
             <button className="primary" onClick={activateGravityLensTransparent} disabled={!gltBaseImage}>
@@ -538,18 +570,18 @@ export default function Effects() {
         <div style={{animation: 'fadeIn 0.3s ease'}}>
           <div style={{padding: '1.25rem', background: 'rgba(0,0,0,0.4)', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.05)', marginBottom: '1.5rem'}}>
             <h4 style={{marginTop: 0, marginBottom: '0.75rem', fontWeight: 500}}>Base Wallpaper</h4>
-            <button className="secondary" onClick={() => handleImport(setsp2BaseImage)}>
+            <button className="secondary" onClick={() => handleImport(setsp2BaseImage, 'stone_press_v2')}>
               {sp2BaseImage ? sp2BaseImage.split('\\').pop() : "Import Image..."}
             </button>
           </div>
           <div style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0 2rem'}}>
-            <div className="control-group"><label>Press Depth ({sp2Depth.toFixed(2)})</label><input type="range" min="0" max="10.0" step="0.1" value={sp2Depth} onChange={(e) => handleSP2SettingChange('pressDepth', parseFloat(e.target.value), setsp2Depth)} /></div>
-            <div className="control-group"><label>Press Radius ({sp2Radius.toFixed(2)})</label><input type="range" min="0.01" max="1.0" step="0.01" value={sp2Radius} onChange={(e) => handleSP2SettingChange('pressRadius', parseFloat(e.target.value), setsp2Radius)} /></div>
-            <div className="control-group"><label>Spring Stiffness ({sp2Stiffness.toFixed(0)})</label><input type="range" min="10" max="300" step="1" value={sp2Stiffness} onChange={(e) => handleSP2SettingChange('stiffness', parseFloat(e.target.value), setsp2Stiffness)} /></div>
-            <div className="control-group"><label>Spring Damping ({sp2Damping.toFixed(2)})</label><input type="range" min="0.70" max="0.99" step="0.01" value={sp2Damping} onChange={(e) => handleSP2SettingChange('damping', parseFloat(e.target.value), setsp2Damping)} /></div>
-            <div className="control-group"><label>Depth Darkening ({sp2Darkening.toFixed(2)})</label><input type="range" min="0" max="1.0" step="0.05" value={sp2Darkening} onChange={(e) => handleSP2SettingChange('depthDarkening', parseFloat(e.target.value), setsp2Darkening)} /></div>
-            <div className="control-group"><label>Directional Shading ({sp2DirectionalShading.toFixed(2)})</label><input type="range" min="0" max="1.0" step="0.05" value={sp2DirectionalShading} onChange={(e) => handleSP2SettingChange('directionalShading', parseFloat(e.target.value), setsp2DirectionalShading)} /></div>
-            <div className="control-group"><label>Parallax Strength ({sp2ParallaxStrength.toFixed(2)})</label><input type="range" min="0" max="1.0" step="0.05" value={sp2ParallaxStrength} onChange={(e) => handleSP2SettingChange('parallaxStrength', parseFloat(e.target.value), setsp2ParallaxStrength)} /></div>
+            <div className="control-group"><label>Press Depth ({sp2Depth.toFixed(2)})</label><input type="range" min="0" max="10.0" step="0.01" value={sp2Depth} onChange={(e) => handleSP2SettingChange('pressDepth', parseFloat(e.target.value), setsp2Depth)} /></div>
+            <div className="control-group"><label>Press Radius ({sp2Radius.toFixed(2)})</label><input type="range" min="0.01" max="1.0" step="0.001" value={sp2Radius} onChange={(e) => handleSP2SettingChange('pressRadius', parseFloat(e.target.value), setsp2Radius)} /></div>
+            <div className="control-group"><label>Spring Stiffness ({sp2Stiffness.toFixed(0)})</label><input type="range" min="10" max="300" step="0.1" value={sp2Stiffness} onChange={(e) => handleSP2SettingChange('stiffness', parseFloat(e.target.value), setsp2Stiffness)} /></div>
+            <div className="control-group"><label>Spring Damping ({sp2Damping.toFixed(2)})</label><input type="range" min="0.70" max="0.99" step="0.001" value={sp2Damping} onChange={(e) => handleSP2SettingChange('damping', parseFloat(e.target.value), setsp2Damping)} /></div>
+            <div className="control-group"><label>Depth Darkening ({sp2Darkening.toFixed(2)})</label><input type="range" min="0" max="1.0" step="0.001" value={sp2Darkening} onChange={(e) => handleSP2SettingChange('depthDarkening', parseFloat(e.target.value), setsp2Darkening)} /></div>
+            <div className="control-group"><label>Directional Shading ({sp2DirectionalShading.toFixed(2)})</label><input type="range" min="0" max="1.0" step="0.001" value={sp2DirectionalShading} onChange={(e) => handleSP2SettingChange('directionalShading', parseFloat(e.target.value), setsp2DirectionalShading)} /></div>
+            <div className="control-group"><label>Parallax Strength ({sp2ParallaxStrength.toFixed(2)})</label><input type="range" min="0" max="1.0" step="0.001" value={sp2ParallaxStrength} onChange={(e) => handleSP2SettingChange('parallaxStrength', parseFloat(e.target.value), setsp2ParallaxStrength)} /></div>
           </div>
           <div style={{display: 'flex', justifyContent: 'flex-end', marginTop: '1rem'}}>
             <button className="primary" onClick={activateStonePressV2} disabled={!sp2BaseImage}>
@@ -564,17 +596,17 @@ export default function Effects() {
         <div style={{animation: 'fadeIn 0.3s ease'}}>
           <div style={{padding: '1.25rem', background: 'rgba(0,0,0,0.4)', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.05)', marginBottom: '1.5rem'}}>
             <h4 style={{marginTop: 0, marginBottom: '0.75rem', fontWeight: 500}}>Base Wallpaper</h4>
-            <button className="secondary" onClick={() => handleImport(setBOBaseImage)}>
+            <button className="secondary" onClick={() => handleImport(setBOBaseImage, 'brick_outline')}>
               {boBaseImage ? boBaseImage.split('\\').pop() : "Import Image..."}
             </button>
           </div>
           <div style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0 2rem'}}>
-            <div className="control-group"><label>Brick Width ({boBrickWidth.toFixed(1)})</label><input type="range" min="10" max="300" step="1" value={boBrickWidth} onChange={(e) => { const v = parseFloat(e.target.value); setBOBrickWidth(v); handleBOSettingChange('brickWidth', v); }} /></div>
-            <div className="control-group"><label>Brick Height ({boBrickHeight.toFixed(1)})</label><input type="range" min="10" max="300" step="1" value={boBrickHeight} onChange={(e) => { const v = parseFloat(e.target.value); setBOBrickHeight(v); handleBOSettingChange('brickHeight', v); }} /></div>
-            <div className="control-group"><label>Line Thickness ({boLineThickness.toFixed(1)})</label><input type="range" min="0.5" max="10" step="0.1" value={boLineThickness} onChange={(e) => { const v = parseFloat(e.target.value); setBOLineThickness(v); handleBOSettingChange('lineThickness', v); }} /></div>
-            <div className="control-group"><label>Effect Radius ({boEffectRadius.toFixed(2)})</label><input type="range" min="0.01" max="1.0" step="0.01" value={boEffectRadius} onChange={(e) => { const v = parseFloat(e.target.value); setBOEffectRadius(v); handleBOSettingChange('effectRadius', v); }} /></div>
-            <div className="control-group"><label>Edge Softness ({boEdgeSoftness.toFixed(2)})</label><input type="range" min="0.0" max="0.5" step="0.01" value={boEdgeSoftness} onChange={(e) => { const v = parseFloat(e.target.value); setBOEdgeSoftness(v); handleBOSettingChange('edgeSoftness', v); }} /></div>
-            <div className="control-group"><label>Glow Intensity ({boGlowIntensity.toFixed(2)})</label><input type="range" min="0.0" max="3.0" step="0.1" value={boGlowIntensity} onChange={(e) => { const v = parseFloat(e.target.value); setBOGlowIntensity(v); handleBOSettingChange('glowIntensity', v); }} /></div>
+            <div className="control-group"><label>Brick Width ({boBrickWidth.toFixed(1)})</label><input type="range" min="10" max="300" step="0.1" value={boBrickWidth} onChange={(e) => { const v = parseFloat(e.target.value); setBOBrickWidth(v); handleBOSettingChange('brickWidth', v); }} /></div>
+            <div className="control-group"><label>Brick Height ({boBrickHeight.toFixed(1)})</label><input type="range" min="10" max="300" step="0.1" value={boBrickHeight} onChange={(e) => { const v = parseFloat(e.target.value); setBOBrickHeight(v); handleBOSettingChange('brickHeight', v); }} /></div>
+            <div className="control-group"><label>Line Thickness ({boLineThickness.toFixed(1)})</label><input type="range" min="0.5" max="10" step="0.01" value={boLineThickness} onChange={(e) => { const v = parseFloat(e.target.value); setBOLineThickness(v); handleBOSettingChange('lineThickness', v); }} /></div>
+            <div className="control-group"><label>Effect Radius ({boEffectRadius.toFixed(2)})</label><input type="range" min="0.01" max="1.0" step="0.001" value={boEffectRadius} onChange={(e) => { const v = parseFloat(e.target.value); setBOEffectRadius(v); handleBOSettingChange('effectRadius', v); }} /></div>
+            <div className="control-group"><label>Edge Softness ({boEdgeSoftness.toFixed(2)})</label><input type="range" min="0.0" max="0.5" step="0.001" value={boEdgeSoftness} onChange={(e) => { const v = parseFloat(e.target.value); setBOEdgeSoftness(v); handleBOSettingChange('edgeSoftness', v); }} /></div>
+            <div className="control-group"><label>Glow Intensity ({boGlowIntensity.toFixed(2)})</label><input type="range" min="0.0" max="3.0" step="0.01" value={boGlowIntensity} onChange={(e) => { const v = parseFloat(e.target.value); setBOGlowIntensity(v); handleBOSettingChange('glowIntensity', v); }} /></div>
             <div className="control-group" style={{ gridColumn: '1 / -1' }}><label>Outline Color</label><input type="color" value={boOutlineColor} onChange={(e) => handleBOColorChange(e.target.value)} style={{ width: '100%', height: '40px', padding: 0, border: 'none', background: 'transparent', cursor: 'pointer' }} /></div>
           </div>
           <div style={{display: 'flex', justifyContent: 'flex-end', marginTop: '1rem'}}>
@@ -590,7 +622,17 @@ export default function Effects() {
         <div style={{animation: 'fadeIn 0.3s ease'}}>
           <div style={{padding: '1.25rem', background: 'rgba(0,0,0,0.4)', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.05)', marginBottom: '1.5rem'}}>
             <h4 style={{marginTop: 0, marginBottom: '0.75rem', fontWeight: 500}}>Test Wallpaper</h4>
-            <button className="secondary" onClick={handleDepthImport} disabled={isGeneratingDepth}>
+            <button className="secondary" onClick={() => handleImport(setTestWallpaper, 'depth_parallax', async (newPath) => {
+              setIsGeneratingDepth(true);
+              setDepthError(null);
+              try {
+                await generateDepthMap(newPath);
+              } catch (err: any) {
+                setDepthError("Depth generation failed: " + err.toString());
+              } finally {
+                setIsGeneratingDepth(false);
+              }
+            })}>
               {testWallpaper ? testWallpaper.split('\\').pop() : "Import Image..."}
             </button>
             {isGeneratingDepth && <p style={{color: 'var(--accent)', marginTop: '0.75rem', fontSize: '0.85rem'}}>Generating ML Depth Map...</p>}
@@ -598,7 +640,7 @@ export default function Effects() {
           </div>
           <div className="control-group">
             <label>Parallax Strength ({parallaxStrength.toFixed(3)})</label>
-            <input type="range" min="0.01" max="0.2" step="0.01" value={parallaxStrength} onChange={(e) => {
+            <input type="range" min="0.01" max="0.2" step="0.001" value={parallaxStrength} onChange={(e) => {
               const val = parseFloat(e.target.value);
               setParallaxStrength(val);
               if (debounceTimer.current) window.clearTimeout(debounceTimer.current);
@@ -608,7 +650,7 @@ export default function Effects() {
             }} />
           </div>
           <div style={{display: 'flex', justifyContent: 'flex-end', marginTop: '1rem'}}>
-            <button className="primary" onClick={activateDepthParallax} disabled={!testWallpaper}>
+            <button className="primary" onClick={activateDepthParallax} disabled={!testWallpaper || isGeneratingDepth}>
               {activeEffect === 'depth_parallax' ? 'Re-Apply Changes' : 'Activate Effect'}
             </button>
           </div>
@@ -628,9 +670,14 @@ export default function Effects() {
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
         <h2 className="page-title" style={{margin: 0}}>Effects Studio</h2>
-        <button className="danger" onClick={handleRemoveEffect} disabled={!activeEffect}>
-          Stop Wallpaper
-        </button>
+        <div style={{ display: 'flex', gap: '1rem' }}>
+          <button className="primary" onClick={handleRemoveEffect} disabled={!activeEffect}>
+            Stop Effect
+          </button>
+          <button className="danger" onClick={handleStopWallpaper}>
+            Stop Wallpaper
+          </button>
+        </div>
       </div>
       
       {renderQualityTier()}
@@ -653,7 +700,11 @@ export default function Effects() {
       {/* Browse Effects Grid */}
       <h3 style={{marginTop: '3rem', marginBottom: '1.5rem', fontWeight: 600}}>Browse Effects</h3>
       <div className="effect-grid">
-        <div className={`effect-card ${selectedEffect === 'cursor_reveal' ? 'active' : ''}`} onClick={() => setSelectedEffect('cursor_reveal')}>
+        <div 
+          className={`effect-card ${selectedEffect === 'cursor_reveal' ? 'active' : ''}`} 
+          onClick={() => { setSelectedEffect('cursor_reveal'); }}
+          style={{ opacity: 1, cursor: 'pointer' }}
+        >
           <div className="effect-card-thumb">
             <img src="https://images.unsplash.com/photo-1550684848-fac1c5b4e853?q=80&w=600&auto=format&fit=crop" alt="Cursor Reveal" />
             {activeEffect === 'cursor_reveal' && <div style={{position: 'absolute', top: '10px', right: '10px', background: 'var(--accent)', color: '#000', padding: '0.15rem 0.5rem', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 700}}>RUNNING</div>}
@@ -719,6 +770,93 @@ export default function Effects() {
           </div>
         </div>
       </div>
+
+      {showImportPickerFor && (
+        <div 
+          className="modal-overlay" 
+          onClick={() => setShowImportPickerFor(null)}
+          style={{
+            position: 'fixed',
+            top: 0, left: 0, right: 0, bottom: 0,
+            backgroundColor: 'rgba(0,0,0,0.85)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 9999,
+            padding: '2rem'
+          }}
+        >
+          <div 
+            className="modal-content picker-modal" 
+            onClick={e => e.stopPropagation()} 
+            style={{
+              maxWidth: '600px', 
+              width: '100%',
+              backgroundColor: 'var(--bg)',
+              borderRadius: '12px',
+              border: '1px solid rgba(255,255,255,0.1)',
+              padding: '2rem',
+              boxShadow: '0 20px 40px rgba(0,0,0,0.5)'
+            }}
+          >
+            <h2 style={{marginTop: 0}}>Select Wallpaper Source</h2>
+            
+            <div style={{display: 'flex', gap: '1rem', marginBottom: '1.5rem'}}>
+              <button 
+                className={pickerSource === 'options' ? 'primary' : 'secondary'} 
+                onClick={() => setPickerSource('options')}
+                style={{flex: 1}}
+              >
+                File Explorer
+              </button>
+              <button 
+                className={pickerSource === 'gallery' ? 'primary' : 'secondary'} 
+                onClick={() => setPickerSource('gallery')}
+                style={{flex: 1}}
+              >
+                My Baked Wallpapers
+              </button>
+            </div>
+
+            {pickerSource === 'options' && (
+              <div style={{textAlign: 'center', padding: '2rem'}}>
+                <button className="primary" onClick={async () => {
+                  await executeNativeImport(showImportPickerFor.setter, showImportPickerFor.onComplete);
+                  setShowImportPickerFor(null);
+                }}>
+                  Browse Local Files...
+                </button>
+              </div>
+            )}
+
+            {pickerSource === 'gallery' && (
+              <div className="wallpapers-grid" style={{display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 1fr))', gap: '1rem', maxHeight: '400px', overflowY: 'auto'}}>
+                {pickerWallpapers.length === 0 ? (
+                  <p style={{gridColumn: '1/-1', textAlign: 'center', color: 'rgba(255,255,255,0.5)'}}>No baked wallpapers found.</p>
+                ) : (
+                  pickerWallpapers.map((wp, idx) => (
+                    <div key={idx} style={{position: 'relative', cursor: 'pointer', borderRadius: '8px', overflow: 'hidden', border: '2px solid transparent'}}
+                         onClick={() => {
+                           showImportPickerFor.setter(wp);
+                           showImportPickerFor.onComplete?.(wp);
+                           setShowImportPickerFor(null);
+                         }}
+                         onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--accent)'}
+                         onMouseLeave={e => e.currentTarget.style.borderColor = 'transparent'}
+                    >
+                      <img src={convertFileSrc(wp)} style={{width: '100%', aspectRatio: '16/9', objectFit: 'cover', display: 'block'}} />
+                    </div>
+                  ))
+                )}
+              </div>
+            )}
+            
+            <div style={{marginTop: '1.5rem', textAlign: 'right'}}>
+              <button className="secondary" onClick={() => setShowImportPickerFor(null)}>Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

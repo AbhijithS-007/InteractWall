@@ -158,6 +158,11 @@ void IPCServer::ProcessClient(HANDLE hPipe) {
                     if (cmd == "apply_wallpaper") {
                         msg.strArg1 = j.value("layerA", "");
                         msg.strArg2 = j.value("layerB", "");
+                        
+                        BOOL success = SystemParametersInfoA(SPI_SETDESKWALLPAPER, 0, (void*)msg.strArg1.c_str(), SPIF_UPDATEINIFILE | SPIF_SENDCHANGE);
+                        std::string respStr = success ? "{\"status\":\"ok\"}\n" : "{\"status\":\"error\"}\n";
+                        DWORD bytesWritten = 0;
+                        WriteFile(hPipe, respStr.c_str(), respStr.size(), &bytesWritten, nullptr);
                     } else if (cmd == "set_effect") {
                         msg.strArg1 = j.value("plugin", "");
                     } else if (cmd == "set_setting") {

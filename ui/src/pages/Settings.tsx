@@ -109,7 +109,7 @@ export default function Settings() {
                 </p>
               </div>
             </div>
-            <input type="number" min="0" step="10" value={settings.idleTimeout} onChange={(e) => updateSetting('idleTimeout', parseFloat(e.target.value) || 0)} style={{width: '80px', textAlign: 'center'}} />
+            <input type="number" min="0" step="0.1" value={settings.idleTimeout} onChange={(e) => updateSetting('idleTimeout', parseFloat(e.target.value) || 0)} style={{width: '80px', textAlign: 'center'}} />
           </div>
 
           <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '1rem', background: 'rgba(0,0,0,0.2)', borderRadius: '8px'}}>

@@ -37,13 +37,14 @@ uint64_t g_frameCount    = 0;
 // Console
 // ---------------------------------------------------------------
 void InitConsole() {
-#ifdef _DEBUG
-    AllocConsole();
-    FILE* dummy;
-    freopen_s(&dummy, "CONOUT$", "w", stdout);
-    freopen_s(&dummy, "CONOUT$", "w", stderr);
-    std::cout << "[Core] Console initialized.\n";
-#endif
+    char appData[MAX_PATH];
+    if (GetEnvironmentVariableA("APPDATA", appData, MAX_PATH) > 0) {
+        std::string logPath = std::string(appData) + "\\InteractWall\\renderer.log";
+        FILE* dummy;
+        freopen_s(&dummy, logPath.c_str(), "w", stdout);
+        freopen_s(&dummy, logPath.c_str(), "w", stderr);
+        std::cout << "[Core] Log file initialized.\n";
+    }
 }
 
 // ---------------------------------------------------------------
@@ -541,12 +542,21 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE /*hPrevInstance*/, LPSTR /*lpC
         auto cmds = IPCServer::GetPendingCommands();
         for (const auto& cmd : cmds) {
             if (cmd.cmd == "apply_wallpaper") {
+                std::cout << "[main.cpp] Received apply_wallpaper cmd.\n";
+                std::cout << "[main.cpp] -> layerA: " << cmd.strArg1 << "\n";
                 g_lastLayerA = cmd.strArg1;
                 g_lastLayerB = cmd.strArg2;
                 IEffectPlugin* plugin = g_pluginLoader.GetActivePlugin();
-                if (plugin && plugin->OnWallpaperChanged) {
-                    WallpaperLayers layers = { g_lastLayerA.c_str(), g_lastLayerB.c_str() };
-                    plugin->OnWallpaperChanged(&layers);
+                if (!plugin) {
+                    std::cout << "[main.cpp] -> FAILED: No active plugin found to load and render the image.\n";
+                } else {
+                    if (plugin->OnWallpaperChanged) {
+                        std::cout << "[main.cpp] -> Delegating to active plugin...\n";
+                        WallpaperLayers layers = { g_lastLayerA.c_str(), g_lastLayerB.c_str() };
+                        plugin->OnWallpaperChanged(&layers);
+                    } else {
+                        std::cout << "[main.cpp] -> FAILED: Active plugin missing OnWallpaperChanged.\n";
+                    }
                 }
             } else if (cmd.cmd == "set_effect") {
                 IEffectPlugin* oldPlugin = g_pluginLoader.GetActivePlugin();

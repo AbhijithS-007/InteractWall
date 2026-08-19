@@ -22,7 +22,7 @@ struct Settings {
 } g_settings;
 
 static int g_qualityTier = 2; // 0=Low, 1=Balanced, 2=High
-static int g_gridSize = 128;
+static int g_gridSize = 256;
 
 // Textures
 static ID3D11Texture2D*          g_TexBase = nullptr;

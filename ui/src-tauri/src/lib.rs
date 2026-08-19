@@ -61,7 +61,10 @@ pub fn run() {
             ipc_client::get_status,
             ipc_client::import_wallpaper,
             ipc_client::list_wallpapers,
-            depth::generate_depth_map
+            ipc_client::save_baked_wallpaper,
+            ipc_client::delete_baked_wallpaper,
+            depth::generate_depth_map,
+            ipc_client::quit_renderer,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -173,6 +173,7 @@ export interface ActiveSession {
     layerA: string;
     layerB: string;
     effect: string;
+    isGalleryCollage?: boolean;
 }
 
 export async function getActiveSession(): Promise<ActiveSession | null> {

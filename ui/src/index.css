@@ -1,3 +1,7 @@
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
 :root {
   --bg-base: #0A0A0C;
   --bg-panel: rgba(20, 20, 25, 0.65);
@@ -26,83 +30,93 @@ body {
 
 #root {
   display: flex;
+  flex-direction: column;
   width: 100%;
 }
 
-/* Sidebar */
-.sidebar {
-  width: 250px;
-  background-color: rgba(10, 10, 12, 0.85);
-  border-right: 1px solid var(--border-color);
+/* Top Navigation */
+.top-bar {
   display: flex;
-  flex-direction: column;
-  padding: 1.5rem 0;
-  backdrop-filter: blur(24px);
-  z-index: 10;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1.5rem 3.5rem;
+  background: transparent;
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 20;
+  pointer-events: none; /* Let clicks pass through empty areas */
 }
 
-.sidebar h1 {
+.top-bar > * {
+  pointer-events: auto; /* Re-enable clicks for items */
+}
+
+.brand {
   font-size: 1.4rem;
-  padding: 0 1.5rem;
-  margin-bottom: 2.5rem;
   letter-spacing: 0.5px;
   display: flex;
   align-items: center;
   gap: 0.75rem;
+  margin: 0;
+  min-width: 150px;
 }
 
-.sidebar h1 .brand-icon {
+.brand .brand-icon {
   color: var(--accent);
   filter: drop-shadow(0 0 8px var(--accent-glow));
 }
 
-.sidebar h1 .brand-text {
+.brand .brand-text {
   font-weight: 800;
   color: white;
 }
 
-.sidebar h1 .brand-accent {
+.brand .brand-accent {
   color: var(--accent);
 }
 
+.nav-capsule {
+  display: flex;
+  background-color: var(--bg-panel);
+  border: 1px solid var(--border-color);
+  border-radius: 999px;
+  padding: 0.35rem;
+  margin: 0 auto;
+  backdrop-filter: blur(24px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+  gap: 0.25rem;
+}
+
 .nav-link {
-  padding: 0.75rem 1.5rem;
+  padding: 0.6rem 1.25rem;
   color: var(--text-secondary);
   text-decoration: none;
   display: flex;
   align-items: center;
-  gap: 0.75rem;
+  gap: 0.5rem;
   transition: all 0.2s ease;
-  margin: 0.25rem 1rem;
-  border-radius: 6px;
+  border-radius: 999px;
+  font-size: 0.95rem;
+  font-weight: 500;
 }
 
 .nav-link:hover {
-  background-color: var(--bg-panel-hover);
   color: var(--text-primary);
+  background-color: rgba(255, 255, 255, 0.05);
 }
 
 .nav-link.active {
-  background-color: var(--bg-panel);
-  color: var(--text-primary);
-  position: relative;
-}
-
-.nav-link.active::before {
-  content: '';
-  position: absolute;
-  left: 0;
-  top: 25%;
-  height: 50%;
-  width: 3px;
   background-color: var(--accent);
-  border-radius: 4px;
+  color: #000;
 }
 
 /* Main Content */
 .content {
   flex: 1;
   padding: 2.5rem 3.5rem;
+  padding-top: 6rem;
   overflow-y: auto;
   background: radial-gradient(circle at top right, rgba(20, 20, 30, 0.8) 0%, rgba(10, 10, 12, 1) 100%);
 }
@@ -367,4 +381,108 @@ input[type="number"]:focus {
   width: 100%;
   height: 100%;
   object-fit: cover;
+}
+
+.wallpaper-card {
+  background-color: rgba(0, 0, 0, 0.5);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  padding: 10px;
+  gap: 10px;
+  transition: all 0.2s;
+}
+
+.wallpaper-card:hover {
+  border-color: var(--accent);
+  box-shadow: 0 0 15px var(--accent-glow);
+}
+
+.wallpaper-card img {
+  width: 100%;
+  aspect-ratio: 16/9;
+  object-fit: cover;
+  border-radius: 4px;
+}
+/* Gallery Editor */
+.gallery-container {
+  display: flex;
+  height: calc(100vh - 5rem);
+  gap: 1.5rem;
+}
+
+.gallery-canvas-area {
+  flex: 1;
+  background-color: #000;
+  border-radius: 12px;
+  border: 1px solid var(--border-color);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  position: relative;
+  touch-action: none;
+}
+
+.gallery-canvas {
+  background-color: transparent;
+  cursor: crosshair;
+  touch-action: none;
+}
+
+.gallery-canvas.drawing {
+  cursor: crosshair;
+}
+
+.gallery-canvas.idle {
+  cursor: default;
+}
+
+.gallery-inspector {
+  width: 300px;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  overflow-y: auto;
+}
+
+.inspector-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.inspector-section h3 {
+  margin: 0;
+  font-size: 1rem;
+  color: var(--accent);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  padding-bottom: 0.5rem;
+}
+
+.gallery-action-bar {
+  position: absolute;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  background: rgba(30, 35, 45, 0.9);
+  border: 1px solid rgba(0, 240, 255, 0.2);
+  border-radius: 30px;
+  padding: 0.4rem;
+  gap: 0.5rem;
+  backdrop-filter: blur(10px);
+  z-index: 10;
+}
+
+.gallery-action-bar button {
+  padding: 0.5rem 1rem;
+  border-radius: 20px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
 }

@@ -56,12 +56,14 @@ fn send_ipc_message(msg: &serde_json::Value) -> Result<String, String> {
 
     // If it's a command that returns data, read response
     let cmd_str = msg.get("cmd").and_then(|v| v.as_str());
-    if cmd_str == Some("get_status") || cmd_str == Some("get_adapters") {
-        let mut response = String::new();
+    if cmd_str == Some("get_status") || cmd_str == Some("get_adapters") || cmd_str == Some("apply_wallpaper") {
         let mut buffer = [0; 4096];
-        if let Ok(bytes_read) = file.read(&mut buffer) {
-            response = String::from_utf8_lossy(&buffer[..bytes_read]).to_string();
+        let bytes_read = file.read(&mut buffer).map_err(|e| e.to_string())?;
+        let response = String::from_utf8_lossy(&buffer[..bytes_read]).to_string();
+        if cmd_str == Some("apply_wallpaper") && response.contains("\"error\"") {
+            return Err(format!("Renderer failed to apply native wallpaper. Response: {}", response));
         }
+        
         Ok(response.trim().to_string())
     } else {
         Ok("".to_string())
@@ -72,9 +74,10 @@ fn send_ipc_message(msg: &serde_json::Value) -> Result<String, String> {
 pub fn apply(layer_a: String, layer_b: String) -> Result<(), String> {
     let msg = json!({
         "cmd": "apply_wallpaper",
-        "layerA": layer_a,
+        "layerA": layer_a.clone(),
         "layerB": layer_b
     });
+    println!("[ipc_client.rs] Sending apply_wallpaper. EXACT path: {}", layer_a);
     send_ipc_message(&msg)?;
     Ok(())
 }
@@ -172,7 +175,7 @@ pub async fn list_wallpapers() -> Result<Vec<String>, String> {
     let app_data = std::env::var("APPDATA").map_err(|_| "Could not find APPDATA".to_string())?;
     let mut target_dir = PathBuf::from(app_data);
     target_dir.push("InteractWall");
-    target_dir.push("wallpapers");
+    target_dir.push("baked_wallpapers");
 
     let mut wallpapers = Vec::new();
     if target_dir.exists() {
@@ -180,7 +183,10 @@ pub async fn list_wallpapers() -> Result<Vec<String>, String> {
             for entry in entries.flatten() {
                 if let Ok(file_type) = entry.file_type() {
                     if file_type.is_file() {
-                        wallpapers.push(entry.path().to_string_lossy().to_string());
+                        let file_name = entry.file_name().to_string_lossy().to_string();
+                        if file_name != "active-collage.png" {
+                            wallpapers.push(entry.path().to_string_lossy().to_string());
+                        }
                     }
                 }
             }
@@ -190,11 +196,51 @@ pub async fn list_wallpapers() -> Result<Vec<String>, String> {
     Ok(wallpapers)
 }
 
+#[command]
+pub fn save_baked_wallpaper(filename: String, bytes: Vec<u8>) -> Result<String, String> {
+    let app_data = std::env::var("APPDATA").map_err(|_| "Could not find APPDATA".to_string())?;
+    let mut target_dir = PathBuf::from(app_data);
+    target_dir.push("InteractWall");
+    target_dir.push("baked_wallpapers");
+
+    if !target_dir.exists() {
+        fs::create_dir_all(&target_dir).map_err(|e| e.to_string())?;
+    }
+
+    let target_path = target_dir.join(&filename);
+    
+    let mut file = OpenOptions::new()
+        .write(true)
+        .create(true)
+        .truncate(true)
+        .open(&target_path)
+        .map_err(|e| e.to_string())?;
+        
+    file.write_all(&bytes).map_err(|e| e.to_string())?;
+
+    println!("[IPC Stub] Saved baked wallpaper to {:?}", target_path);
+
+    Ok(target_path.to_string_lossy().to_string())
+}
+
+#[command]
+pub fn delete_baked_wallpaper(path: String) -> Result<(), String> {
+    std::fs::remove_file(&path).map_err(|e| format!("Failed to delete file {}: {}", path, e))?;
+    Ok(())
+}
+
+
 pub fn send_quit_command() {
     if let Ok(mut file) = OpenOptions::new().read(true).write(true).open(PIPE_NAME) {
         let msg = json!({"cmd": "quit"}).to_string() + "\n";
         let _ = file.write_all(msg.as_bytes());
         let _ = file.flush();
     }
+}
+
+#[command]
+pub fn quit_renderer() -> Result<(), String> {
+    send_quit_command();
+    Ok(())
 }
 

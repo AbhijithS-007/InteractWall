@@ -132,16 +132,9 @@ pub async fn generate_depth_map(source_path: String) -> Result<String, String> {
     let file_stem = source.file_stem().unwrap().to_string_lossy();
     let file_name = format!("{}_depth.png", file_stem);
 
-    let app_data = std::env::var("APPDATA").map_err(|_| "Could not find APPDATA".to_string())?;
-    let mut target_dir = PathBuf::from(app_data);
-    target_dir.push("InteractWall");
-    target_dir.push("wallpapers");
-
-    if !target_dir.exists() {
-        std::fs::create_dir_all(&target_dir).map_err(|e| e.to_string())?;
-    }
-
+    let target_dir = source.parent().ok_or("Invalid source path")?;
     let target_path = target_dir.join(file_name);
+    
     final_depth
         .save(&target_path)
         .map_err(|e| format!("Failed to save depth map: {}", e))?;

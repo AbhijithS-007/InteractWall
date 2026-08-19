@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { open } from '@tauri-apps/plugin-dialog';
 import { importWallpaper, listWallpapers, applyWallpaper, setEffect, setSetting } from '../ipc';
-import { getWallpaperPairing } from '../store';
+import { getWallpaperPairing, saveActiveSession } from '../store';
 
 export default function WallpaperManager() {
   const [importedImages, setImportedImages] = useState<string[]>([]);
@@ -37,8 +37,10 @@ export default function WallpaperManager() {
           if (pairing.effect === 'depth_parallax') {
              const depthImage = path.replace(/\.[^/.]+$/, "") + "_depth.png";
              await applyWallpaper(path, depthImage);
-          } else if (pairing.effect === 'gravity_lens' || pairing.effect === 'cursor_reveal') {
+             await saveActiveSession({ layerA: path, layerB: depthImage, effect: pairing.effect, isGalleryCollage: false });
+          } else if (pairing.effect === 'gravity_lens' || pairing.effect === 'cursor_reveal' || pairing.effect === 'gravity_lens_transparent' || pairing.effect === 'stone_press_v2' || pairing.effect === 'brick_outline') {
              await applyWallpaper(path, "");
+             await saveActiveSession({ layerA: path, layerB: "", effect: pairing.effect, isGalleryCollage: false });
           }
           await setEffect(pairing.effect);
           for (const [key, val] of Object.entries(pairing.settings)) {

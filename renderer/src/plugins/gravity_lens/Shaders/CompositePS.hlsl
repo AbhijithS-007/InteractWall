@@ -42,7 +42,7 @@ float4 main(VS_OUTPUT input) : SV_TARGET {
         float2 distVec = input.uv - cursorUV;
         distVec.x *= aspectRatio;
         float dist = length(distVec);
-        float darken = smoothstep(lensRadius, 0.0, dist) * coreDarkening;
+        float darken = (1.0 - smoothstep(0.0, lensRadius, dist)) * coreDarkening;
         color.rgb *= (1.0 - darken);
     }
     

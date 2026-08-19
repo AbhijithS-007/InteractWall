@@ -39,3 +39,14 @@ export async function listWallpapers(): Promise<string[]> {
 export async function generateDepthMap(sourcePath: string): Promise<string> {
     return invoke("generate_depth_map", { sourcePath });
 }
+
+export async function saveBakedWallpaper(filename: string, bytes: Uint8Array): Promise<string> {
+    return invoke("save_baked_wallpaper", { filename, bytes });
+}
+
+export async function deleteBakedWallpaper(path: string): Promise<void> {
+    return invoke("delete_baked_wallpaper", { path });
+}
+export async function quitRenderer() {
+    return invoke("quit_renderer");
+}

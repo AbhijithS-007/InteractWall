@@ -10,7 +10,7 @@ static ONNX_INITIALIZED: OnceLock<bool> = OnceLock::new();
 
 fn init_ort() -> Result<(), String> {
     if ONNX_INITIALIZED.get().is_none() {
-        let _ = ort::init().with_name("InteractWall").commit();
+        let _ = ort::init().with_name("Graffiti").commit();
         let _ = ONNX_INITIALIZED.set(true);
     }
     Ok(())

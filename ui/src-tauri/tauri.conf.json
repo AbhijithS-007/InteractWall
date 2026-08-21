@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "InteractWall",
+  "productName": "Graffiti",
   "version": "0.1.0",
-  "identifier": "com.interactwall.app",
+  "identifier": "com.klaaav.graffiti",
   "build": {
     "beforeDevCommand": "npm run dev",
     "devUrl": "http://localhost:1420",
@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "InteractWall",
+        "title": "Graffiti",
         "width": 800,
         "height": 600,
         "visible": false
@@ -37,7 +37,7 @@
       "icons/icon.ico"
     ],
     "resources": {
-      "../../renderer/build/Release/InteractWallRenderer.exe": "InteractWallRenderer.exe",
+      "../../renderer/build/Release/GraffitiRenderer.exe": "GraffitiRenderer.exe",
       "../../renderer/build/Release/plugins": "plugins"
     }
   }

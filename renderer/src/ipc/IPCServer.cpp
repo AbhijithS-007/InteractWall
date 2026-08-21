@@ -31,7 +31,7 @@ void IPCServer::Stop() {
 
   // Connect to the pipe locally to unblock ConnectNamedPipe
   HANDLE hPipe =
-      CreateFileA("\\\\.\\pipe\\InteractWall", GENERIC_READ | GENERIC_WRITE, 0,
+      CreateFileA("\\\\.\\pipe\\Graffiti", GENERIC_READ | GENERIC_WRITE, 0,
                   nullptr, OPEN_EXISTING, 0, nullptr);
   if (hPipe != INVALID_HANDLE_VALUE) {
     CloseHandle(hPipe);
@@ -63,7 +63,7 @@ float IPCServer::GetTimeSinceLastMessage() {
 void IPCServer::ServerThreadFunc() {
   while (s_running) {
     HANDLE hPipe =
-        CreateNamedPipeA("\\\\.\\pipe\\InteractWall", PIPE_ACCESS_DUPLEX,
+        CreateNamedPipeA("\\\\.\\pipe\\Graffiti", PIPE_ACCESS_DUPLEX,
                          PIPE_TYPE_MESSAGE | PIPE_READMODE_MESSAGE | PIPE_WAIT,
                          PIPE_UNLIMITED_INSTANCES, 4096, 4096, 0, nullptr);
 
@@ -177,13 +177,13 @@ void IPCServer::ProcessClient(HANDLE hPipe) {
             WriteFile(hPipe, respStr.c_str(), respStr.size(), &bytesWritten,
                       nullptr);
           } else if (cmd == "clear_wallpaper") {
-            char originalWallpaper[MAX_PATH] = {0};
+            wchar_t originalWallpaper[MAX_PATH] = {0};
             BOOL success = FALSE;
             HKEY hKey;
-            if (RegOpenKeyExA(HKEY_CURRENT_USER, "Control Panel\\Desktop", 0, KEY_READ, &hKey) == ERROR_SUCCESS) {
+            if (RegOpenKeyExW(HKEY_CURRENT_USER, L"Control Panel\\Desktop", 0, KEY_READ, &hKey) == ERROR_SUCCESS) {
                 DWORD cbData = sizeof(originalWallpaper);
-                if (RegQueryValueExA(hKey, "Wallpaper", nullptr, nullptr, (LPBYTE)originalWallpaper, &cbData) == ERROR_SUCCESS) {
-                    success = SystemParametersInfoA(SPI_SETDESKWALLPAPER, 0, (void*)originalWallpaper, SPIF_SENDCHANGE);
+                if (RegQueryValueExW(hKey, L"Wallpaper", nullptr, nullptr, (LPBYTE)originalWallpaper, &cbData) == ERROR_SUCCESS) {
+                    success = SystemParametersInfoW(SPI_SETDESKWALLPAPER, 0, (void*)originalWallpaper, SPIF_SENDCHANGE);
                 }
                 RegCloseKey(hKey);
             }

@@ -4,9 +4,15 @@ export default function About() {
   return (
     <div style={{maxWidth: '600px', margin: '0 auto', textAlign: 'center', paddingTop: '2rem'}}>
       <div style={{marginBottom: '3rem'}}>
+        <div style={{display: 'flex', justifyContent: 'center', marginBottom: '1rem'}}>
+          <img src="/logos/Klaaav_logo.jpeg" alt="Klaaav" style={{ height: '32px', width: '32px', objectFit: 'contain', borderRadius: '4px' }} />
+        </div>
         <h1 style={{fontSize: '3rem', margin: '0 0 0.5rem 0', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '0.75rem'}}>
-          <span className="brand-text">Interact<span className="brand-accent">Wall</span></span>
+          <span className="brand-text">Graffiti</span>
         </h1>
+        <div style={{ color: 'var(--text-secondary)', marginBottom: '1rem', fontSize: '1.1rem' }}>
+          A Klaaav product
+        </div>
         <div style={{display: 'inline-block', padding: '0.25rem 1rem', background: 'rgba(0, 240, 255, 0.1)', color: 'var(--accent)', borderRadius: '20px', fontWeight: 600, fontSize: '0.9rem', border: '1px solid rgba(0, 240, 255, 0.2)'}}>
           Version 1.0.0
         </div>
@@ -16,7 +22,7 @@ export default function About() {
         <h3 style={{marginTop: 0, marginBottom: '1rem', color: 'white'}}>Our Philosophy</h3>
         <p style={{color: 'var(--text-secondary)', fontSize: '1.05rem', lineHeight: 1.6, margin: 0}}>
           <strong style={{color: 'var(--accent)'}}>Privacy first. Everything local.</strong><br/><br/>
-          We believe your desktop is your personal space. InteractWall is built from the ground up to be a completely offline, high-performance engine. There are no accounts, no bundled telemetry, and no data leaving your machine. 
+          We believe your desktop is your personal space. Graffiti is built from the ground up to be a completely offline, high-performance engine. There are no accounts, no bundled telemetry, and no data leaving your machine. 
         </p>
       </div>
 

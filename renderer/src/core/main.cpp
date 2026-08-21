@@ -39,7 +39,7 @@ uint64_t g_frameCount    = 0;
 void InitConsole() {
     char appData[MAX_PATH];
     if (GetEnvironmentVariableA("APPDATA", appData, MAX_PATH) > 0) {
-        std::string logPath = std::string(appData) + "\\InteractWall\\renderer.log";
+        std::string logPath = std::string(appData) + "\\Graffiti\\renderer.log";
         FILE* dummy;
         freopen_s(&dummy, logPath.c_str(), "w", stdout);
         freopen_s(&dummy, logPath.c_str(), "w", stderr);
@@ -118,7 +118,7 @@ void CleanupRenderTarget() {
 std::string ReadPreferredGPU() {
     char appData[MAX_PATH];
     if (GetEnvironmentVariableA("APPDATA", appData, MAX_PATH) > 0) {
-        std::string path = std::string(appData) + "\\InteractWall\\renderer.cfg";
+        std::string path = std::string(appData) + "\\Graffiti\\renderer.cfg";
         std::ifstream file(path);
         if (file.is_open()) {
             std::string line;
@@ -413,7 +413,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE /*hPrevInstance*/, LPSTR /*lpC
     SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
 
     InitConsole();
-    std::cout << "InteractWallRenderer Starting...\n";
+    std::cout << "GraffitiRenderer Starting...\n";
 
     // ---- Find WorkerW ----
     HWND workerW = GetWorkerW();
@@ -431,7 +431,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE /*hPrevInstance*/, LPSTR /*lpC
     wc.lpfnWndProc   = WndProc;
     wc.hInstance     = hInstance;
     wc.hCursor       = LoadCursor(nullptr, IDC_ARROW);
-    wc.lpszClassName = "InteractWallClass";
+    wc.lpszClassName = "GraffitiClass";
 
     if (!RegisterClassEx(&wc)) {
         std::cout << "RegisterClassEx failed.\n";
@@ -448,7 +448,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE /*hPrevInstance*/, LPSTR /*lpC
     g_hwnd = CreateWindowEx(
         0,
         wc.lpszClassName,
-        "InteractWallRenderer",
+        "GraffitiRenderer",
         WS_POPUP | WS_VISIBLE,
         0, 0, screenWidth, screenHeight,
         nullptr,    // NO parent during creation to avoid cross-thread ownership locking
@@ -537,23 +537,48 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE /*hPrevInstance*/, LPSTR /*lpC
 
         if (!isRunning) break;
 
-        // Global Mouse Tracking
-        POINT pt;
-        if (GetCursorPos(&pt)) {
-            static POINT lastPt = { -1, -1 };
-            if (pt.x != lastPt.x || pt.y != lastPt.y) {
-                lastPt = pt;
-                PowerManager::OnMouseMove();
-                if (IEffectPlugin* plugin = g_pluginLoader.GetActivePlugin()) {
+        // Evaluate render state once per loop
+        int fpsCap = QualityManager::GetCurrentTier()->fpsCap;
+        bool shouldRender = PowerManager::ShouldRenderFrame(fpsCap);
+        static bool wasRendering = true;
+
+        if (shouldRender && !wasRendering) {
+            // We just transitioned from Paused to Active
+            if (IEffectPlugin* plugin = g_pluginLoader.GetActivePlugin()) {
+                if (plugin->OnResume) {
+                    plugin->OnResume();
+                }
+                
+                // Flush stale queued input and resync previous-position state to current on resume
+                POINT pt;
+                if (GetCursorPos(&pt) && ScreenToClient(g_hwnd, &pt)) {
                     if (plugin->OnMouseMove) {
                         plugin->OnMouseMove(pt.x, pt.y);
                     }
                 }
             }
         }
-        
-        // (Removed 15-second heartbeat auto-exit to prevent premature exits during sleep or when UI is backgrounded)
+        wasRendering = shouldRender;
 
+        // Global Mouse Tracking
+        POINT pt;
+        if (GetCursorPos(&pt)) {
+            static POINT lastPt = { -1, -1 };
+            if (pt.x != lastPt.x || pt.y != lastPt.y) {
+                lastPt = pt;
+                PowerManager::OnMouseMove(); // Keeps idle timers awake
+                
+                // Only pass mouse events to the active plugin if we are actively rendering
+                if (shouldRender) {
+                    if (IEffectPlugin* plugin = g_pluginLoader.GetActivePlugin()) {
+                        if (plugin->OnMouseMove) {
+                            plugin->OnMouseMove(pt.x, pt.y);
+                        }
+                    }
+                }
+            }
+        }
+        
         // Process IPC Commands
         auto cmds = IPCServer::GetPendingCommands();
         for (const auto& cmd : cmds) {
@@ -620,7 +645,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE /*hPrevInstance*/, LPSTR /*lpC
                 } else if (cmd.strArg1 == "engine.preferredGPU") {
                     char appData[MAX_PATH];
                     if (GetEnvironmentVariableA("APPDATA", appData, MAX_PATH) > 0) {
-                        std::string path = std::string(appData) + "\\InteractWall\\renderer.cfg";
+                        std::string path = std::string(appData) + "\\Graffiti\\renderer.cfg";
                         std::ofstream file(path);
                         if (file.is_open()) {
                             file << "preferredGPU=" << cmd.strArg2 << "\n";
@@ -655,8 +680,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE /*hPrevInstance*/, LPSTR /*lpC
             }
         }
 
-        int fpsCap = QualityManager::GetCurrentTier()->fpsCap;
-        if (PowerManager::ShouldRenderFrame(fpsCap)) {
+        if (shouldRender) {
             auto beforeRender = std::chrono::high_resolution_clock::now();
             Render();
             auto afterRender = std::chrono::high_resolution_clock::now();
@@ -702,7 +726,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE /*hPrevInstance*/, LPSTR /*lpC
     DestroyWindow(g_hwnd);
     UnregisterClass(wc.lpszClassName, hInstance);
 
-    std::cout << "InteractWallRenderer Exiting cleanly.\n";
+    std::cout << "GraffitiRenderer Exiting cleanly.\n";
     
     // Force Explorer to redraw the desktop wallpaper
     char originalWallpaper[MAX_PATH] = {0};

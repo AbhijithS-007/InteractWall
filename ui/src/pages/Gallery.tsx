@@ -1045,7 +1045,7 @@ export default function Gallery() {
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border-color)', paddingBottom: '1rem', marginBottom: '1rem' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                 <h2 style={{margin: 0}}>My Baked Wallpapers</h2>
-                <div title="%APPDATA%\InteractWall\baked_wallpapers" style={{cursor: 'help', display: 'flex', color: 'var(--text-secondary)'}}>
+                <div title="%APPDATA%\Graffiti\baked_wallpapers" style={{cursor: 'help', display: 'flex', color: 'var(--text-secondary)'}}>
                   <Info size={16} />
                 </div>
               </div>

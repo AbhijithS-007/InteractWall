@@ -39,9 +39,11 @@ function App() {
   return (
     <Router>
       <div className="top-bar">
-        <h1 className="brand">
-          <Layers className="brand-icon" size={24} />
-          <span className="brand-text">Interact<span className="brand-accent">Wall</span></span>
+        <h1 className="brand" style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <img src="/logos/Klaaav_logo.jpeg" alt="Klaaav" style={{ height: '20px', width: '20px', objectFit: 'contain', borderRadius: '4px' }} />
+          <div style={{ width: '1px', height: '24px', backgroundColor: 'var(--border-color)' }}></div>
+          <img src="/logos/Graffiti_logo.jpeg" alt="Graffiti Logo" style={{ height: '24px', width: '24px', objectFit: 'contain', borderRadius: '4px' }} />
+          <span className="brand-text">Graffiti</span>
         </h1>
         <div className="nav-capsule">
           <NavLink to="/gallery" className={({isActive}) => `nav-link ${isActive ? 'active' : ''}`}>

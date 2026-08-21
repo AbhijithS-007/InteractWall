@@ -17,6 +17,25 @@ fn file_exists(path: String) -> bool {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // 1-TIME MIGRATION: Rename %APPDATA%\InteractWall to %APPDATA%\Graffiti
+    if let Some(appdata) = std::env::var_os("APPDATA") {
+        let old_path = std::path::Path::new(&appdata).join("InteractWall");
+        let new_path = std::path::Path::new(&appdata).join("Graffiti");
+        
+        if old_path.exists() && !new_path.exists() {
+            println!("[Migration] Renaming legacy 'InteractWall' data folder to 'Graffiti'...");
+            if let Err(e) = std::fs::rename(&old_path, &new_path) {
+                eprintln!("[Migration] FAILED to rename data folder: {}", e);
+            } else {
+                println!("[Migration] Successfully migrated data folder.");
+            }
+        } else if new_path.exists() {
+            println!("[Migration] Skipped (already migrated or fresh install).");
+        } else {
+            println!("[Migration] Skipped (fresh install, no old data found).");
+        }
+    }
+
     tauri::Builder::default()
         .plugin(tauri_plugin_store::Builder::new().build())
         .plugin(tauri_plugin_autostart::Builder::new().args(vec!["--autostart"]).build())

@@ -367,6 +367,12 @@ void CR_OnMouseMove(int x, int y) {
     g_mousePoints.push_back({mappedX, mappedY});
 }
 
+void CR_OnResume() {
+    g_mousePoints.clear();
+    g_historyPoints.clear();
+    // This will force the next frame to not interpolate a line from the old position
+}
+
 void CR_OnWallpaperChanged(const WallpaperLayers* layers) {
     if (!g_ctx || !layers) return;
     
@@ -440,7 +446,8 @@ static IEffectPlugin g_plugin = {
     CR_OnQualityTierChanged,
     CR_LoadSettings,
     CR_SaveSettings,
-    CR_OnSettingChanged
+    CR_OnSettingChanged,
+    CR_OnResume
 };
 
 extern "C" __declspec(dllexport) IEffectPlugin* CreateEffectPlugin() {

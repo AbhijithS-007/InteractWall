@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use tauri::command;
 
-const PIPE_NAME: &str = r"\\.\pipe\InteractWall";
+const PIPE_NAME: &str = r"\\.\pipe\Graffiti";
 const CREATE_NO_WINDOW: u32 = 0x08000000;
 
 fn get_renderer_path() -> PathBuf {
@@ -15,13 +15,13 @@ fn get_renderer_path() -> PathBuf {
         let relative = exe
             .parent()
             .unwrap_or(Path::new("."))
-            .join("InteractWallRenderer.exe");
+            .join("GraffitiRenderer.exe");
         if relative.exists() {
             return relative;
         }
     }
     // Dev fallback: hardcoded project path
-    PathBuf::from(r"C:\My_Proj\InteractWall\renderer\build\Release\InteractWallRenderer.exe")
+    PathBuf::from(r"C:\My_Proj\InteractWall\renderer\build\Release\GraffitiRenderer.exe")
 }
 
 fn send_ipc_message(msg: &serde_json::Value) -> Result<String, String> {
@@ -152,10 +152,10 @@ pub fn import_wallpaper(file_path: String) -> Result<String, String> {
 
     let file_name = source.file_name().ok_or("Invalid file name")?;
 
-    // Resolve %APPDATA%\InteractWall\wallpapers
+    // Resolve %APPDATA%\Graffiti\wallpapers
     let app_data = std::env::var("APPDATA").map_err(|_| "Could not find APPDATA".to_string())?;
     let mut target_dir = PathBuf::from(app_data);
-    target_dir.push("InteractWall");
+    target_dir.push("Graffiti");
     target_dir.push("wallpapers");
 
     if !target_dir.exists() {
@@ -174,7 +174,7 @@ pub fn import_wallpaper(file_path: String) -> Result<String, String> {
 pub async fn list_wallpapers() -> Result<Vec<String>, String> {
     let app_data = std::env::var("APPDATA").map_err(|_| "Could not find APPDATA".to_string())?;
     let mut target_dir = PathBuf::from(app_data);
-    target_dir.push("InteractWall");
+    target_dir.push("Graffiti");
     target_dir.push("baked_wallpapers");
 
     let mut wallpapers = Vec::new();
@@ -184,7 +184,7 @@ pub async fn list_wallpapers() -> Result<Vec<String>, String> {
                 if let Ok(file_type) = entry.file_type() {
                     if file_type.is_file() {
                         let file_name = entry.file_name().to_string_lossy().to_string();
-                        if file_name != "active-collage.png" {
+                        if file_name != "active-collage.png" && !file_name.ends_with("_depth.png") {
                             wallpapers.push(entry.path().to_string_lossy().to_string());
                         }
                     }
@@ -200,7 +200,7 @@ pub async fn list_wallpapers() -> Result<Vec<String>, String> {
 pub fn save_baked_wallpaper(filename: String, bytes: Vec<u8>) -> Result<String, String> {
     let app_data = std::env::var("APPDATA").map_err(|_| "Could not find APPDATA".to_string())?;
     let mut target_dir = PathBuf::from(app_data);
-    target_dir.push("InteractWall");
+    target_dir.push("Graffiti");
     target_dir.push("baked_wallpapers");
 
     if !target_dir.exists() {

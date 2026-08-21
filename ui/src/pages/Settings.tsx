@@ -81,7 +81,7 @@ export default function Settings() {
             <div>
               <strong style={{fontSize: '1rem'}}>Launch at Startup</strong>
               <p style={{fontSize: '0.85rem', color: 'var(--text-secondary)', margin: '0.25rem 0 0 0', lineHeight: 1.4}}>
-                Start InteractWall automatically silently in the background when you sign into Windows.
+                Start Graffiti automatically silently in the background when you sign into Windows.
               </p>
             </div>
           </div>

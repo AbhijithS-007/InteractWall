@@ -48,6 +48,7 @@ typedef struct IEffectPlugin {
     void (*LoadSettings)(const char* jsonPath);
     void (*SaveSettings)(const char* jsonPath);
     void (*OnSettingChanged)(const char* key, float value);
+    void (*OnResume)();
 } IEffectPlugin;
 
 typedef IEffectPlugin* (*PFN_CreateEffectPlugin)();

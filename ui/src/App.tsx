@@ -9,19 +9,22 @@ import { useEffect } from 'react';
 import About from './pages/About';
 import Gallery from './pages/Gallery';
 import { loadSettings, applySettingsToBackend, getActiveSession, loadEffectSettings } from './store';
-import { applyWallpaper, setEffect, setSetting } from './ipc';
+import { applyWallpaper, setEffect, setSetting, isAutostart } from './ipc';
 
 function App() {
   useEffect(() => {
     loadSettings().then(applySettingsToBackend).catch(console.error);
     
-    // Auto-restore last active wallpaper and its settings
-    getActiveSession().then(async (session) => {
-        if (session) {
-            await applyWallpaper(session.layerA, session.layerB);
-            await setEffect(session.effect);
-            const settings = await loadEffectSettings(session.effect);
-            if (settings) {
+    // Auto-restore last active wallpaper and its settings ONLY if launched via autostart (system boot)
+    isAutostart().then((isAuto) => {
+      if (!isAuto) return; // User manually opened the UI; don't force auto-apply
+      
+      getActiveSession().then(async (session) => {
+          if (session) {
+              await applyWallpaper(session.layerA, session.layerB);
+              await setEffect(session.effect);
+              const settings = await loadEffectSettings(session.effect);
+              if (settings) {
                 // Short delay to ensure plugin is initialized before accepting settings
                 setTimeout(async () => {
                     for (const [k, v] of Object.entries(settings)) {
@@ -31,6 +34,7 @@ function App() {
             }
         }
     }).catch(console.error);
+    });
   }, []);
   return (
     <Router>

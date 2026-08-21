@@ -295,20 +295,36 @@ void Render() {
     auto now = std::chrono::high_resolution_clock::now();
     std::chrono::duration<float> frameTime = now - g_lastFrameTime;
     float deltaTime = frameTime.count();
+    
+    IEffectPlugin* plugin = g_pluginLoader.GetActivePlugin();
+
+    // Prevent physics explosion and mouse streak when resuming from a long pause (e.g., fullscreen occluded)
+    if (deltaTime > 0.1f) {
+        deltaTime = 1.0f / 60.0f; // cap to 1 frame 60fps
+        if (plugin && plugin->OnMouseMove) {
+            POINT pt;
+            if (GetCursorPos(&pt) && ScreenToClient(g_hwnd, &pt)) {
+                // Call twice to reset the delta inside the plugin (prevMouse = currentMouse = pt)
+                plugin->OnMouseMove(pt.x, pt.y);
+                plugin->OnMouseMove(pt.x, pt.y);
+            }
+        }
+    }
+
     g_lastFrameTime = now;
 
     g_frameCount++;
 
-    IEffectPlugin* plugin = g_pluginLoader.GetActivePlugin();
     if (!plugin) {
         if (IsWindowVisible(g_hwnd)) {
             ShowWindow(g_hwnd, SW_HIDE);
         }
+        Sleep(16); // Sleep to prevent 100% CPU core usage when no effect is running
         return; // Don't render anything if no plugin is active
-    }
-
-    if (!IsWindowVisible(g_hwnd)) {
-        ShowWindow(g_hwnd, SW_SHOW);
+    } else {
+        if (!IsWindowVisible(g_hwnd)) {
+            ShowWindow(g_hwnd, SW_SHOW);
+        }
     }
 
     // Bind the render target (required before clear / present have any effect).
@@ -619,12 +635,19 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE /*hPrevInstance*/, LPSTR /*lpC
                     }
                 }
             } else if (cmd.cmd == "remove_effect") {
+                std::cout << "[main.cpp] Received remove_effect cmd.\n";
                 IEffectPlugin* oldPlugin = g_pluginLoader.GetActivePlugin();
                 if (oldPlugin) {
+                    std::cout << "[main.cpp] -> Shutting down active plugin...\n";
                     if (oldPlugin->Shutdown) oldPlugin->Shutdown();
+                    std::cout << "[main.cpp] -> Resetting GPU state...\n";
                     ResetGPUState();
+                } else {
+                    std::cout << "[main.cpp] -> No active plugin to shut down.\n";
                 }
+                std::cout << "[main.cpp] -> Setting active plugin to none...\n";
                 g_pluginLoader.SetActivePlugin("");
+                std::cout << "[main.cpp] -> Active plugin is now: " << g_pluginLoader.GetActivePluginName() << "\n";
             } else if (cmd.cmd == "quit") {
                 std::cout << "[main] Received quit command. Exiting.\n";
                 isRunning = false;
@@ -682,7 +705,19 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE /*hPrevInstance*/, LPSTR /*lpC
     std::cout << "InteractWallRenderer Exiting cleanly.\n";
     
     // Force Explorer to redraw the desktop wallpaper
-    SystemParametersInfoA(SPI_SETDESKWALLPAPER, 0, nullptr, SPIF_SENDCHANGE);
+    char originalWallpaper[MAX_PATH] = {0};
+    BOOL success = FALSE;
+    HKEY hKey;
+    if (RegOpenKeyExA(HKEY_CURRENT_USER, "Control Panel\\Desktop", 0, KEY_READ, &hKey) == ERROR_SUCCESS) {
+        DWORD cbData = sizeof(originalWallpaper);
+        if (RegQueryValueExA(hKey, "Wallpaper", nullptr, nullptr, (LPBYTE)originalWallpaper, &cbData) == ERROR_SUCCESS) {
+            success = SystemParametersInfoA(SPI_SETDESKWALLPAPER, 0, (void*)originalWallpaper, SPIF_SENDCHANGE);
+        }
+        RegCloseKey(hKey);
+    }
+    if (!success) {
+        SystemParametersInfoA(SPI_SETDESKWALLPAPER, 0, nullptr, SPIF_SENDCHANGE);
+    }
     
     return 0;
 }

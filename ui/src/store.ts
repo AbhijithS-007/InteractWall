@@ -12,6 +12,8 @@ async function getStore(): Promise<Store> {
 
 export interface EffectSettings {
     cursor_reveal: {
+        layerA?: string;
+        layerB?: string;
         brushSize: number;
         brushHardness: number;
         trailLength: number;
@@ -19,9 +21,11 @@ export interface EffectSettings {
         fadeWhenResting: number;
     };
     depth_parallax: {
+        testWallpaper?: string;
         parallaxStrength: number;
     };
     gravity_lens: {
+        baseImage?: string;
         lensStrength: number;
         lensRadius: number;
         stiffness: number;
@@ -32,6 +36,7 @@ export interface EffectSettings {
         fadeDecay: number;
     };
     gravity_lens_transparent: {
+        baseImage?: string;
         pressDepth: number;
         pressRadius: number;
         stiffness: number;
@@ -42,6 +47,7 @@ export interface EffectSettings {
         fadeDecay: number;
     };
     stone_press_v2: {
+        baseImage?: string;
         pressDepth: number;
         pressRadius: number;
         stiffness: number;
@@ -51,6 +57,7 @@ export interface EffectSettings {
         parallaxStrength: number;
     };
     brick_outline: {
+        baseImage?: string;
         brickWidth: number;
         brickHeight: number;
         lineThickness: number;

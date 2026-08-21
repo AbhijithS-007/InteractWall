@@ -3,12 +3,23 @@ mod depth;
 mod ipc_client;
 
 use tauri::Manager;
+use std::path::Path;
+
+#[tauri::command]
+fn is_autostart() -> bool {
+    std::env::args().any(|arg| arg == "--autostart")
+}
+
+#[tauri::command]
+fn file_exists(path: String) -> bool {
+    Path::new(&path).exists()
+}
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_store::Builder::new().build())
-        .plugin(tauri_plugin_autostart::Builder::new().build())
+        .plugin(tauri_plugin_autostart::Builder::new().args(vec!["--autostart"]).build())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .setup(|app| {
@@ -43,6 +54,15 @@ pub fn run() {
                 })
                 .build(app)?;
 
+            // If it's NOT an autostart, we want to show the UI.
+            // If it IS an autostart, it starts hidden (because of tauri.conf.json visible: false).
+            if !std::env::args().any(|arg| arg == "--autostart") {
+                if let Some(window) = app.get_webview_window("main") {
+                    let _ = window.show();
+                    let _ = window.set_focus();
+                }
+            }
+
             Ok(())
         })
         .on_window_event(|window, event| {
@@ -63,8 +83,10 @@ pub fn run() {
             ipc_client::list_wallpapers,
             ipc_client::save_baked_wallpaper,
             ipc_client::delete_baked_wallpaper,
+            ipc_client::clear_wallpaper,
             depth::generate_depth_map,
-            ipc_client::quit_renderer,
+            is_autostart,
+            file_exists,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

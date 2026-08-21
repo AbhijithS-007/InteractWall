@@ -47,6 +47,15 @@ export async function saveBakedWallpaper(filename: string, bytes: Uint8Array): P
 export async function deleteBakedWallpaper(path: string): Promise<void> {
     return invoke("delete_baked_wallpaper", { path });
 }
-export async function quitRenderer() {
-    return invoke("quit_renderer");
+
+export async function isAutostart(): Promise<boolean> {
+    return invoke("is_autostart");
+}
+
+export async function fileExists(path: string): Promise<boolean> {
+    return invoke("file_exists", { path });
+}
+
+export async function clearWallpaper(): Promise<void> {
+    return invoke('clear_wallpaper');
 }

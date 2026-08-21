@@ -2,9 +2,9 @@ import { useState, useRef, useEffect } from 'react';
 import { open } from '@tauri-apps/plugin-dialog';
 import { load } from '@tauri-apps/plugin-store';
 import { convertFileSrc } from '@tauri-apps/api/core';
-import { importWallpaper, saveBakedWallpaper, deleteBakedWallpaper, applyWallpaper, listWallpapers, removeEffect, generateDepthMap } from '../ipc';
+import { importWallpaper, saveBakedWallpaper, deleteBakedWallpaper, applyWallpaper, listWallpapers, removeEffect, clearWallpaper } from '../ipc';
 import { saveActiveSession } from '../store';
-import { Plus, X, Image as ImageIcon, Save, Upload, Check, Undo2, Redo2, FolderOpen, Trash2 } from 'lucide-react';
+import { Plus, X, Image as ImageIcon, Save, Upload, Check, Undo2, Redo2, FolderOpen, Trash2, Info } from 'lucide-react';
 
 interface Transform {
   panX: number;
@@ -87,13 +87,13 @@ export default function Gallery() {
   const [resizeCount, setResizeCount] = useState(0);
   const [showWallpapersModal, setShowWallpapersModal] = useState(false);
   const [savedWallpapers, setSavedWallpapers] = useState<string[]>([]);
-  
+
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-  
+
   // Cache for loaded images
   const imageCache = useRef<Record<string, HTMLImageElement>>({});
-  
+
   // Interaction state
   const dragRef = useRef<{
     active: boolean;
@@ -170,7 +170,7 @@ export default function Gallery() {
       }
     };
     loadProject();
-    
+
     const handleResize = () => setResizeCount(c => c + 1);
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
@@ -189,14 +189,14 @@ export default function Gallery() {
       const canvas = canvasRef.current;
       const container = containerRef.current;
       if (!canvas || !container) return;
-      
+
       const ctx = canvas.getContext('2d');
       if (!ctx) return;
-      
+
       // Match canvas resolution to container size (assuming 16:9 for now, or just filling container)
       const rect = container.getBoundingClientRect();
       const targetAspect = 16 / 9;
-      
+
       let cw, ch;
       if (rect.width / rect.height > targetAspect) {
         ch = rect.height;
@@ -205,19 +205,19 @@ export default function Gallery() {
         cw = rect.width;
         ch = cw / targetAspect;
       }
-      
+
       // Handle high DPI displays
       const dpr = window.devicePixelRatio || 1;
       canvas.width = cw * dpr;
       canvas.height = ch * dpr;
       canvas.style.width = `${cw}px`;
       canvas.style.height = `${ch}px`;
-      
+
       ctx.scale(dpr, dpr);
-      
+
       // Helper to convert normalized to pixel coordinates
       const toPx = (nx: number, ny: number): [number, number] => [nx * cw, ny * ch];
-      
+
       // 1. Draw Background
       if (project.background.type === 'color') {
         ctx.fillStyle = project.background.value;
@@ -250,13 +250,13 @@ export default function Gallery() {
           }
         }
       }
-      
+
       // 2. Draw Completed Shapes
       project.shapes.forEach((shape) => {
         if (shape.vertices.length < 3) return;
-        
+
         ctx.save();
-        
+
         // Build Path
         ctx.beginPath();
         const start = toPx(shape.vertices[0][0], shape.vertices[0][1]);
@@ -266,21 +266,21 @@ export default function Gallery() {
           ctx.lineTo(pt[0], pt[1]);
         }
         ctx.closePath();
-        
+
         // Clip to shape
         ctx.clip();
-        
+
         // Draw Image inside clip
         if (shape.imagePath) {
           const img = getImage(shape.imagePath);
           if (img && img.complete) {
             const center = getPolygonCenter(shape.vertices);
             const cPx = toPx(center[0], center[1]);
-            
+
             ctx.translate(cPx[0] + shape.transform.panX * cw, cPx[1] + shape.transform.panY * ch);
             ctx.rotate(shape.transform.rotate);
             ctx.scale(shape.transform.zoom, shape.transform.zoom);
-            
+
             // Scale image to roughly match polygon bounds so it's not massive
             const bounds = getPolygonBounds(shape.vertices);
             const shapeW = (bounds.maxX - bounds.minX) * cw;
@@ -288,20 +288,20 @@ export default function Gallery() {
             const scaleX = shapeW / img.naturalWidth;
             const scaleY = shapeH / img.naturalHeight;
             const defaultScale = Math.max(scaleX, scaleY) || 1;
-            
+
             const scaledW = img.naturalWidth * defaultScale;
             const scaledH = img.naturalHeight * defaultScale;
-            
-            ctx.drawImage(img, -scaledW/2, -scaledH/2, scaledW, scaledH);
+
+            ctx.drawImage(img, -scaledW / 2, -scaledH / 2, scaledW, scaledH);
           }
         } else {
           // Placeholder fill if no image
           ctx.fillStyle = shape.id === selectedShapeId ? 'rgba(0, 240, 255, 0.2)' : 'rgba(255, 255, 255, 0.1)';
           ctx.fill();
         }
-        
+
         ctx.restore();
-        
+
         // Draw Stroke (after restore to not be clipped)
         ctx.beginPath();
         ctx.moveTo(start[0], start[1]);
@@ -328,7 +328,7 @@ export default function Gallery() {
           });
         }
       });
-      
+
       // 3. Draw Snapping Indicators
       if (previewCursor && (previewCursor.snapX || previewCursor.snapY) && (editorState === 'DRAWING' || dragRef.current?.active)) {
         ctx.save();
@@ -346,7 +346,7 @@ export default function Gallery() {
           ctx.lineTo(cw, py);
         }
         ctx.stroke();
-        
+
         ctx.fillStyle = 'rgba(0, 240, 255, 1)';
         ctx.beginPath();
         ctx.arc(px, py, 5, 0, Math.PI * 2);
@@ -362,7 +362,7 @@ export default function Gallery() {
         for (let i = 1; i < drawingShape.length; i++) {
           const pt = toPx(drawingShape[i][0], drawingShape[i][1]);
           ctx.lineTo(pt[0], pt[1]);
-          
+
           // Draw vertex points
           ctx.fillStyle = '#00F0FF';
           ctx.fillRect(pt[0] - 4, pt[1] - 4, 8, 8);
@@ -374,19 +374,19 @@ export default function Gallery() {
         }
         ctx.fillStyle = '#00F0FF';
         ctx.fillRect(start[0] - 4, start[1] - 4, 8, 8);
-        
+
         ctx.lineWidth = 2;
         ctx.strokeStyle = '#00F0FF';
         ctx.setLineDash([5, 5]);
         ctx.stroke();
         ctx.setLineDash([]);
       }
-      
+
       // Removed animationFrameId = requestAnimationFrame(render);
     };
-    
+
     render();
-    
+
     // Cleanup not needed for single render pass
   }, [project, drawingShape, editorState, selectedShapeId, tick, resizeCount, previewCursor]);
 
@@ -426,13 +426,13 @@ export default function Gallery() {
     const rect = canvas.getBoundingClientRect();
     let x = (e.clientX - rect.left);
     let y = (e.clientY - rect.top);
-    
+
     let snapX = false;
     let snapY = false;
 
     if (x < SNAP_THRESHOLD_PX) { x = 0; snapX = true; }
     else if (x > rect.width - SNAP_THRESHOLD_PX) { x = rect.width; snapX = true; }
-    
+
     if (y < SNAP_THRESHOLD_PX) { y = 0; snapY = true; }
     else if (y > rect.height - SNAP_THRESHOLD_PX) { y = rect.height; snapY = true; }
 
@@ -442,7 +442,7 @@ export default function Gallery() {
   const handlePointerDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
     e.preventDefault();
     const [nx, ny] = getSnappedNormalizedMousePos(e);
-    
+
     if (editorState === 'DRAWING') {
       // If clicking near the start vertex, close the shape
       if (drawingShape.length >= 3) {
@@ -471,7 +471,7 @@ export default function Gallery() {
       setDrawingShape([...drawingShape, [nx, ny]]);
       return;
     }
-    
+
     // Check for vertex dragging on selected shape
     if (editorState === 'IDLE' && selectedShapeId) {
       const shape = project.shapes.find(s => s.id === selectedShapeId);
@@ -482,9 +482,9 @@ export default function Gallery() {
           const vyPx = v[1] * rect.height;
           const mxPx = (e.clientX - rect.left);
           const myPx = (e.clientY - rect.top);
-          return Math.sqrt((vxPx - mxPx)**2 + (vyPx - myPx)**2) < 10; // 10px grab radius
+          return Math.sqrt((vxPx - mxPx) ** 2 + (vyPx - myPx) ** 2) < 10; // 10px grab radius
         });
-        
+
         if (hitIdx !== -1) {
           dragRef.current = {
             active: true,
@@ -496,7 +496,7 @@ export default function Gallery() {
         }
       }
     }
-    
+
     // Select Shape (iterate backwards to select top-most first)
     let clickedShapeId: string | null = null;
     const [rawNx, rawNy] = getNormalizedMousePos(e);
@@ -506,9 +506,9 @@ export default function Gallery() {
         break;
       }
     }
-    
+
     setSelectedShapeId(clickedShapeId);
-    
+
     // Initiate pan if a shape with an image is clicked
     if (clickedShapeId) {
       const shape = project.shapes.find(s => s.id === clickedShapeId);
@@ -527,11 +527,11 @@ export default function Gallery() {
 
   const handlePointerMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
     const [nx, ny, snapX, snapY] = getSnappedNormalizedMousePos(e);
-    
+
     setPreviewCursor({ x: nx, y: ny, snapX, snapY });
-    
+
     if (!dragRef.current?.active) return;
-    
+
     if (dragRef.current.mode === 'vertex' && dragRef.current.shapeId) {
       setProject(prev => ({
         ...prev,
@@ -546,12 +546,12 @@ export default function Gallery() {
       }));
       return;
     }
-    
+
     if (dragRef.current.mode === 'pan' && selectedShapeId) {
       const [rawNx, rawNy] = getNormalizedMousePos(e);
       const dx = rawNx - dragRef.current.startX!;
       const dy = rawNy - dragRef.current.startY!;
-      
+
       setProject(prev => ({
         ...prev,
         shapes: prev.shapes.map(s => {
@@ -581,19 +581,19 @@ export default function Gallery() {
     }
     setPreviewCursor(null);
   };
-  
+
   const handlePointerLeave = () => {
     if (dragRef.current) {
       dragRef.current.active = false;
     }
     setPreviewCursor(null);
   };
-  
+
   const handleWheel = (e: React.WheelEvent<HTMLCanvasElement>) => {
     if (!selectedShapeId) return;
     const shape = project.shapes.find(s => s.id === selectedShapeId);
     if (!shape || !shape.imagePath) return;
-    
+
     const zoomDelta = e.deltaY * -0.001;
     updateShapeTransform(selectedShapeId, { zoom: Math.max(0.1, shape.transform.zoom + zoomDelta) });
   };
@@ -601,7 +601,7 @@ export default function Gallery() {
   const updateShapeTransform = (id: string, partial: Partial<Transform>) => {
     setProject(prev => ({
       ...prev,
-      shapes: prev.shapes.map(s => 
+      shapes: prev.shapes.map(s =>
         s.id === id ? { ...s, transform: { ...s.transform, ...partial } } : s
       )
     }));
@@ -641,7 +641,7 @@ export default function Gallery() {
           setProject(prev => {
             const next = {
               ...prev,
-              shapes: prev.shapes.map(s => 
+              shapes: prev.shapes.map(s =>
                 s.id === id ? { ...s, imagePath: newPath } : s
               )
             };
@@ -693,121 +693,121 @@ export default function Gallery() {
   };
 
   const bakeCanvas = async (): Promise<Uint8Array> => {
-      // 1. Calculate Target Resolution
-      let maxSourceWidth = 0;
-      
-      if (project.background.type === 'image' && project.background.value) {
-        const bgImg = imageCache.current[project.background.value];
-        if (bgImg) maxSourceWidth = Math.max(maxSourceWidth, bgImg.width);
+    // 1. Calculate Target Resolution
+    let maxSourceWidth = 0;
+
+    if (project.background.type === 'image' && project.background.value) {
+      const bgImg = imageCache.current[project.background.value];
+      if (bgImg) maxSourceWidth = Math.max(maxSourceWidth, bgImg.width);
+    }
+
+    project.shapes.forEach(shape => {
+      if (shape.imagePath) {
+        const img = imageCache.current[shape.imagePath];
+        if (img) maxSourceWidth = Math.max(maxSourceWidth, img.width);
       }
-      
-      project.shapes.forEach(shape => {
-        if (shape.imagePath) {
-          const img = imageCache.current[shape.imagePath];
-          if (img) maxSourceWidth = Math.max(maxSourceWidth, img.width);
+    });
+
+    // Default to 1920 if no images exist
+    if (maxSourceWidth === 0) maxSourceWidth = 1920;
+
+    // Cap at 2560 (2K), minimum 1920, and respect screen width if it's smaller
+    const targetWidth = Math.min(2560, Math.max(1920, maxSourceWidth), window.screen.width * (window.devicePixelRatio || 1));
+    const targetHeight = targetWidth / (16 / 9); // Assuming 16:9 for target wallpaper aspect
+
+    // 2. Offscreen Canvas Render
+    const offCanvas = document.createElement('canvas');
+    offCanvas.width = targetWidth;
+    offCanvas.height = targetHeight;
+    const ctx = offCanvas.getContext('2d');
+    if (!ctx) throw new Error("Failed to get context");
+
+    const cw = targetWidth;
+    const ch = targetHeight;
+    const toPx = (nx: number, ny: number): [number, number] => [nx * cw, ny * ch];
+
+    // Background
+    if (project.background.type === 'color') {
+      ctx.fillStyle = project.background.value;
+      ctx.fillRect(0, 0, cw, ch);
+    } else if (project.background.type === 'image' && project.background.value) {
+      const img = imageCache.current[project.background.value];
+      if (img && img.complete) {
+        if (project.background.fit === 'cover' || project.background.fit === 'contain') {
+          const imgAspect = img.width / img.height;
+          let drawW = cw, drawH = ch;
+          if (project.background.fit === 'cover') {
+            if (cw / ch > imgAspect) drawH = cw / imgAspect;
+            else drawW = ch * imgAspect;
+          } else {
+            if (cw / ch > imgAspect) drawW = ch * imgAspect;
+            else drawH = cw / imgAspect;
+          }
+          const dx = (cw - drawW) / 2;
+          const dy = (ch - drawH) / 2;
+          ctx.drawImage(img, dx, dy, drawW, drawH);
+        } else if (project.background.fit === 'stretch') {
+          ctx.drawImage(img, 0, 0, cw, ch);
+        } else if (project.background.fit === 'tile') {
+          const pat = ctx.createPattern(img, 'repeat');
+          if (pat) {
+            ctx.fillStyle = pat;
+            ctx.fillRect(0, 0, cw, ch);
+          }
         }
-      });
-      
-      // Default to 1920 if no images exist
-      if (maxSourceWidth === 0) maxSourceWidth = 1920;
-      
-      // Cap at 2560 (2K), minimum 1920, and respect screen width if it's smaller
-      const targetWidth = Math.min(2560, Math.max(1920, maxSourceWidth), window.screen.width * (window.devicePixelRatio || 1));
-      const targetHeight = targetWidth / (16 / 9); // Assuming 16:9 for target wallpaper aspect
-      
-      // 2. Offscreen Canvas Render
-      const offCanvas = document.createElement('canvas');
-      offCanvas.width = targetWidth;
-      offCanvas.height = targetHeight;
-      const ctx = offCanvas.getContext('2d');
-      if (!ctx) throw new Error("Failed to get context");
-      
-      const cw = targetWidth;
-      const ch = targetHeight;
-      const toPx = (nx: number, ny: number): [number, number] => [nx * cw, ny * ch];
-      
-      // Background
-      if (project.background.type === 'color') {
-        ctx.fillStyle = project.background.value;
-        ctx.fillRect(0, 0, cw, ch);
-      } else if (project.background.type === 'image' && project.background.value) {
-        const img = imageCache.current[project.background.value];
+      }
+    }
+
+    // Shapes
+    project.shapes.forEach((shape) => {
+      if (shape.vertices.length < 3) return;
+      ctx.save();
+      ctx.beginPath();
+      const start = toPx(shape.vertices[0][0], shape.vertices[0][1]);
+      ctx.moveTo(start[0], start[1]);
+      for (let i = 1; i < shape.vertices.length; i++) {
+        const pt = toPx(shape.vertices[i][0], shape.vertices[i][1]);
+        ctx.lineTo(pt[0], pt[1]);
+      }
+      ctx.closePath();
+      ctx.clip();
+
+      if (shape.imagePath) {
+        const img = imageCache.current[shape.imagePath];
         if (img && img.complete) {
-          if (project.background.fit === 'cover' || project.background.fit === 'contain') {
-            const imgAspect = img.width / img.height;
-            let drawW = cw, drawH = ch;
-            if (project.background.fit === 'cover') {
-              if (cw / ch > imgAspect) drawH = cw / imgAspect;
-              else drawW = ch * imgAspect;
-            } else {
-              if (cw / ch > imgAspect) drawW = ch * imgAspect;
-              else drawH = cw / imgAspect;
-            }
-            const dx = (cw - drawW) / 2;
-            const dy = (ch - drawH) / 2;
-            ctx.drawImage(img, dx, dy, drawW, drawH);
-          } else if (project.background.fit === 'stretch') {
-            ctx.drawImage(img, 0, 0, cw, ch);
-          } else if (project.background.fit === 'tile') {
-            const pat = ctx.createPattern(img, 'repeat');
-            if (pat) {
-              ctx.fillStyle = pat;
-              ctx.fillRect(0, 0, cw, ch);
-            }
-          }
+          const center = getPolygonCenter(shape.vertices);
+          const cPx = toPx(center[0], center[1]);
+
+          ctx.translate(cPx[0] + shape.transform.panX * cw, cPx[1] + shape.transform.panY * ch);
+          ctx.rotate(shape.transform.rotate);
+          ctx.scale(shape.transform.zoom, shape.transform.zoom);
+
+          const bounds = getPolygonBounds(shape.vertices);
+          const shapeW = (bounds.maxX - bounds.minX) * cw;
+          const shapeH = (bounds.maxY - bounds.minY) * ch;
+          const scaleX = shapeW / img.naturalWidth;
+          const scaleY = shapeH / img.naturalHeight;
+          const defaultScale = Math.max(scaleX, scaleY) || 1;
+
+          const scaledW = img.naturalWidth * defaultScale;
+          const scaledH = img.naturalHeight * defaultScale;
+
+          ctx.drawImage(img, -scaledW / 2, -scaledH / 2, scaledW, scaledH);
         }
+      } else {
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.1)';
+        ctx.fill();
       }
-      
-      // Shapes
-      project.shapes.forEach((shape) => {
-        if (shape.vertices.length < 3) return;
-        ctx.save();
-        ctx.beginPath();
-        const start = toPx(shape.vertices[0][0], shape.vertices[0][1]);
-        ctx.moveTo(start[0], start[1]);
-        for (let i = 1; i < shape.vertices.length; i++) {
-          const pt = toPx(shape.vertices[i][0], shape.vertices[i][1]);
-          ctx.lineTo(pt[0], pt[1]);
-        }
-        ctx.closePath();
-        ctx.clip();
-        
-        if (shape.imagePath) {
-          const img = imageCache.current[shape.imagePath];
-          if (img && img.complete) {
-            const center = getPolygonCenter(shape.vertices);
-            const cPx = toPx(center[0], center[1]);
-            
-            ctx.translate(cPx[0] + shape.transform.panX * cw, cPx[1] + shape.transform.panY * ch);
-            ctx.rotate(shape.transform.rotate);
-            ctx.scale(shape.transform.zoom, shape.transform.zoom);
-            
-            const bounds = getPolygonBounds(shape.vertices);
-            const shapeW = (bounds.maxX - bounds.minX) * cw;
-            const shapeH = (bounds.maxY - bounds.minY) * ch;
-            const scaleX = shapeW / img.naturalWidth;
-            const scaleY = shapeH / img.naturalHeight;
-            const defaultScale = Math.max(scaleX, scaleY) || 1;
-            
-            const scaledW = img.naturalWidth * defaultScale;
-            const scaledH = img.naturalHeight * defaultScale;
-            
-            ctx.drawImage(img, -scaledW/2, -scaledH/2, scaledW, scaledH);
-          }
-        } else {
-          ctx.fillStyle = 'rgba(255, 255, 255, 0.1)';
-          ctx.fill();
-        }
-        
-        ctx.restore();
-      });
-      
-      // 3. Bake and Save
-      const blob = await new Promise<Blob | null>(res => offCanvas.toBlob(res, "image/png"));
-      if (!blob) throw new Error("Failed to bake image");
-      
-      const arrayBuffer = await blob.arrayBuffer();
-      return new Uint8Array(arrayBuffer);
+
+      ctx.restore();
+    });
+
+    // 3. Bake and Save
+    const blob = await new Promise<Blob | null>(res => offCanvas.toBlob(res, "image/png"));
+    if (!blob) throw new Error("Failed to bake image");
+
+    const arrayBuffer = await blob.arrayBuffer();
+    return new Uint8Array(arrayBuffer);
   };
 
   const handleActivate = async () => {
@@ -815,9 +815,6 @@ export default function Gallery() {
       setIsGeneratingDepth(true);
       const bytes = await bakeCanvas();
       const savedPath = await saveBakedWallpaper(`active-collage.png`, bytes);
-      
-      console.log("Generating depth map for active collage...");
-      await generateDepthMap(savedPath);
 
       // 4. Apply
       await saveProject(true); // update the gallery-project.json silently
@@ -840,10 +837,7 @@ export default function Gallery() {
       const hashBuffer = await crypto.subtle.digest('SHA-256', bytes);
       const hashArray = Array.from(new Uint8Array(hashBuffer));
       const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-      const savedPath = await saveBakedWallpaper(`gallery-${hashHex}.png`, bytes);
-      
-      console.log("Generating depth map for baked gallery wallpaper...");
-      await generateDepthMap(savedPath);
+      await saveBakedWallpaper(`gallery-${hashHex}.png`, bytes);
 
       await saveProject(false);
       setIsGeneratingDepth(false);
@@ -899,6 +893,14 @@ export default function Gallery() {
               <button className="secondary" onClick={() => setShowWallpapersModal(true)}>
                 <FolderOpen size={16} /> My Wallpapers
               </button>
+              <div style={{ width: '1px', background: 'rgba(255,255,255,0.2)', margin: '0 5px' }}></div>
+              <button className="danger" onClick={async () => {
+                await clearWallpaper();
+                await saveActiveSession(null);
+                alert("Wallpaper stopped and reset.");
+              }}>
+                Stop Wallpaper
+              </button>
             </>
           )}
         </div>
@@ -909,7 +911,7 @@ export default function Gallery() {
             flexDirection: 'column', gap: '1rem', backdropFilter: 'blur(4px)', borderRadius: '8px'
           }}>
             <div className="spinner"></div>
-            <div style={{ color: 'var(--text-secondary)' }}>Processing Depth Map...</div>
+            <div style={{ color: 'var(--text-secondary)' }}>Baking Wallpaper...</div>
           </div>
         )}
       </div>
@@ -918,22 +920,22 @@ export default function Gallery() {
           <h2>Background</h2>
           <div className="control-group">
             <label>Type</label>
-            <select 
-              value={project.background.type} 
-              onChange={e => setProject(p => { const next = {...p, background: {...p.background, type: e.target.value as 'color' | 'image'}}; commitHistory(next); return next; })}
+            <select
+              value={project.background.type}
+              onChange={e => setProject(p => { const next = { ...p, background: { ...p.background, type: e.target.value as 'color' | 'image' } }; commitHistory(next); return next; })}
             >
               <option value="color">Solid Color</option>
               <option value="image">Image</option>
             </select>
           </div>
-          
+
           {project.background.type === 'color' ? (
             <div className="control-group">
               <label>Color</label>
-              <input 
-                type="color" 
-                value={project.background.value} 
-                onChange={e => setProject(p => { const next = {...p, background: {...p.background, value: e.target.value}}; commitHistory(next); return next; })}
+              <input
+                type="color"
+                value={project.background.value}
+                onChange={e => setProject(p => { const next = { ...p, background: { ...p.background, value: e.target.value } }; commitHistory(next); return next; })}
                 style={{ width: '100%', height: '40px', background: 'transparent', border: '1px solid var(--border-color)', borderRadius: '4px', cursor: 'pointer' }}
               />
             </div>
@@ -944,9 +946,9 @@ export default function Gallery() {
               </button>
               <div className="control-group">
                 <label>Fit Mode</label>
-                <select 
-                  value={project.background.fit} 
-                  onChange={e => setProject(p => { const next = {...p, background: {...p.background, fit: e.target.value as Background['fit']}}; commitHistory(next); return next; })}
+                <select
+                  value={project.background.fit}
+                  onChange={e => setProject(p => { const next = { ...p, background: { ...p.background, fit: e.target.value as Background['fit'] } }; commitHistory(next); return next; })}
                 >
                   <option value="cover">Cover</option>
                   <option value="contain">Contain</option>
@@ -965,8 +967,8 @@ export default function Gallery() {
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '10px' }}>
               {project.shapes.map((shape, index) => (
-                <div 
-                  key={shape.id} 
+                <div
+                  key={shape.id}
                   onClick={() => setSelectedShapeId(shape.id)}
                   style={{
                     padding: '8px 12px',
@@ -994,32 +996,32 @@ export default function Gallery() {
               Shape Details
               <button className="danger" onClick={() => deleteShape(selectedShape.id)} style={{ padding: '4px 8px', fontSize: '0.8rem' }}>Delete</button>
             </h2>
-            
+
             <button className="secondary" onClick={() => handleImportImageForShape(selectedShape.id)} style={{ width: '100%', display: 'flex', justifyContent: 'center', gap: '8px', margin: '15px 0' }}>
               <ImageIcon size={18} /> {selectedShape.imagePath ? 'Change Image' : 'Import Image'}
             </button>
-            
+
             {selectedShape.imagePath && (
               <>
                 <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: '20px' }}>
                   Tip: Drag the shape in the canvas to pan the image. Use mouse wheel to zoom.
                 </p>
-                
+
                 <div className="control-group">
                   <label>Zoom ({selectedShape.transform.zoom.toFixed(2)}x)</label>
-                  <input 
-                    type="range" min="0.1" max="5.0" step="0.001" 
-                    value={selectedShape.transform.zoom} 
-                    onChange={e => updateShapeTransform(selectedShape.id, { zoom: parseFloat(e.target.value) })} 
+                  <input
+                    type="range" min="0.1" max="5.0" step="0.001"
+                    value={selectedShape.transform.zoom}
+                    onChange={e => updateShapeTransform(selectedShape.id, { zoom: parseFloat(e.target.value) })}
                   />
                 </div>
 
                 <div className="control-group">
-                  <label>Rotation ({(selectedShape.transform.rotate * (180/Math.PI)).toFixed(0)}°)</label>
-                  <input 
-                    type="range" min="-3.14159" max="3.14159" step="0.001" 
-                    value={selectedShape.transform.rotate} 
-                    onChange={e => updateShapeTransform(selectedShape.id, { rotate: parseFloat(e.target.value) })} 
+                  <label>Rotation ({(selectedShape.transform.rotate * (180 / Math.PI)).toFixed(0)}°)</label>
+                  <input
+                    type="range" min="-3.14159" max="3.14159" step="0.001"
+                    value={selectedShape.transform.rotate}
+                    onChange={e => updateShapeTransform(selectedShape.id, { rotate: parseFloat(e.target.value) })}
                   />
                 </div>
               </>
@@ -1041,7 +1043,12 @@ export default function Gallery() {
         }}>
           <div className="card" style={{ width: '80%', height: '80%', display: 'flex', flexDirection: 'column' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border-color)', paddingBottom: '1rem', marginBottom: '1rem' }}>
-              <h2>My Baked Wallpapers</h2>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <h2 style={{margin: 0}}>My Baked Wallpapers</h2>
+                <div title="%APPDATA%\InteractWall\baked_wallpapers" style={{cursor: 'help', display: 'flex', color: 'var(--text-secondary)'}}>
+                  <Info size={16} />
+                </div>
+              </div>
               <button className="secondary" onClick={() => setShowWallpapersModal(false)}><X size={20} /></button>
             </div>
             <div className="thumbnail-grid" style={{ overflowY: 'auto', flex: 1 }}>
@@ -1051,7 +1058,7 @@ export default function Gallery() {
                 savedWallpapers.map((path, idx) => (
                   <div key={idx} className="wallpaper-card" style={{ position: 'relative' }}>
                     <img src={convertFileSrc(path)} alt={`Wallpaper ${idx}`} />
-                    
+
                     <button className="secondary" style={{ position: 'absolute', top: '8px', right: '8px', padding: '6px', background: 'rgba(0,0,0,0.6)', border: 'none', borderRadius: '4px' }}
                       onClick={async () => {
                         if (confirm("Are you sure you want to delete this wallpaper?")) {

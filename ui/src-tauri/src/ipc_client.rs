@@ -229,7 +229,6 @@ pub fn delete_baked_wallpaper(path: String) -> Result<(), String> {
     Ok(())
 }
 
-
 pub fn send_quit_command() {
     if let Ok(mut file) = OpenOptions::new().read(true).write(true).open(PIPE_NAME) {
         let msg = json!({"cmd": "quit"}).to_string() + "\n";
@@ -239,8 +238,8 @@ pub fn send_quit_command() {
 }
 
 #[command]
-pub fn quit_renderer() -> Result<(), String> {
-    send_quit_command();
+pub fn clear_wallpaper() -> Result<(), String> {
+    let msg = json!({"cmd": "clear_wallpaper"});
+    send_ipc_message(&msg)?;
     Ok(())
 }
-

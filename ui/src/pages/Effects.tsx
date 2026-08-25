@@ -214,14 +214,17 @@ export default function Effects() {
       try {
         const status = await getStatus();
         if (status && status.activePlugin) {
-          let uiName = status.activePlugin.replace('.dll', '');
-          if (uiName === "stone_press_v2") uiName = "stone_press_v2";
-          else if (uiName === "gravity_lens_transparent") uiName = "gravity_lens_transparent";
-          else if (uiName === "gravity_lens") uiName = "gravity_lens";
-          else if (uiName === "depth_parallax") uiName = "depth_parallax";
-          else if (uiName === "cursor_reveal") uiName = "cursor_reveal";
-          else if (uiName === "brick_outline") uiName = "brick_outline";
-          else uiName = "none";
+          // Convert PascalCase DLL name (e.g. "StonePressV2.dll") to snake_case UI name (e.g. "stone_press_v2")
+          let uiName = status.activePlugin
+            .replace('.dll', '')
+            .replace(/([a-z0-9])([A-Z])/g, '$1_$2')
+            .replace(/([A-Z]+)([A-Z][a-z])/g, '$1_$2')
+            .toLowerCase();
+
+          // Validate it's a known effect
+          const knownEffects = ['cursor_reveal', 'gravity_lens', 'gravity_lens_transparent',
+                                'stone_press_v2', 'depth_parallax', 'brick_outline'];
+          if (!knownEffects.includes(uiName)) uiName = 'none';
 
           const newActive = uiName === 'none' ? null : uiName;
           setActiveEffect(newActive);

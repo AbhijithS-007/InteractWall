@@ -672,6 +672,14 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE /*hPrevInstance*/, LPSTR /*lpC
                 }
                 std::cout << "[main.cpp] -> Setting active plugin to none...\n";
                 g_pluginLoader.SetActivePlugin("");
+                
+                // Immediately hide the window. If the renderer is paused (e.g. idle timeout),
+                // ShouldRenderFrame() returns false, which skips Render(), meaning it would otherwise
+                // never hide the window. Doing it here guarantees it hides immediately.
+                if (IsWindowVisible(g_hwnd)) {
+                    ShowWindow(g_hwnd, SW_HIDE);
+                }
+                
                 std::cout << "[main.cpp] -> Active plugin is now: " << g_pluginLoader.GetActivePluginName() << "\n";
             } else if (cmd.cmd == "quit") {
                 std::cout << "[main] Received quit command. Exiting.\n";

@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Web Wallpaper PoC</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: transparent;
+        }
+        canvas {
+            display: block;
+        }
+        /* Diagnostic overlay — always visible, top-left corner */
+        #diag {
+            position: fixed;
+            top: 10px;
+            left: 10px;
+            color: #00ff00;
+            font-family: 'Consolas', 'Courier New', monospace;
+            font-size: 13px;
+            background: rgba(0,0,0,0.85);
+            padding: 12px 16px;
+            border-radius: 8px;
+            border: 1px solid #00ff00;
+            z-index: 99999;
+            pointer-events: none;
+            white-space: pre;
+            line-height: 1.5;
+            max-width: 600px;
+        }
+        #diag .label { color: #aaaaaa; }
+        #diag .ok { color: #00ff00; }
+        #diag .warn { color: #ff4444; }
+    </style>
+</head>
+<body>
+    <div id="diag">⏳ Waiting for C++ host diagnostic data...</div>
+
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "./three.module.js",
+                "../utils/BufferGeometryUtils.js": "./BufferGeometryUtils.js"
+            }
+        }
+    </script>
+    <script type="module">
+        import * as THREE from 'three';
+        import { GLTFLoader } from './GLTFLoader.js';
+
+        const diagEl = document.getElementById('diag');
+        let ipcCount = 0;
+        let lastX = 0, lastY = 0;
+        let modelLoaded = false;
+
+        // ---- Catch JS errors and show them ----
+        window.onerror = (msg, src, line) => {
+            diagEl.innerHTML += `\n<span class="warn">JS ERROR: ${msg}\n  at ${src}:${line}</span>`;
+        };
+
+        // ---- Three.js setup ----
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x1a1a2e); // Dark blue — visually distinct from white (broken) or transparent
+
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.z = 3;
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(window.devicePixelRatio);
+        document.body.appendChild(renderer.domElement);
+
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+        scene.add(ambientLight);
+        const directionalLight = new THREE.DirectionalLight(0xffffff, 1.2);
+        directionalLight.position.set(5, 5, 5);
+        scene.add(directionalLight);
+
+        let model = null;
+        let targetRotationX = 0;
+        let targetRotationY = 0;
+
+        const loader = new GLTFLoader();
+        loader.load('./model.glb', (gltf) => {
+            model = gltf.scene;
+            scene.add(model);
+            modelLoaded = true;
+        }, undefined, (error) => {
+            diagEl.innerHTML += `\n<span class="warn">MODEL LOAD ERROR: ${error.message || error}</span>`;
+        });
+
+        // ---- IPC from C++ host ----
+        if (window.chrome && window.chrome.webview) {
+            window.chrome.webview.addEventListener('message', event => {
+                const d = event.data;
+
+                if (d && d.type === 'diag') {
+                    // ---- DIAGNOSTIC MESSAGE FROM C++ HOST ----
+                    let html = '';
+                    html += `<span class="label">═══ WorkerW Diagnostic ═══</span>\n`;
+                    html += `WorkerW HWND:    <span class="${d.workerW !== '0x0000000000000000' ? 'ok' : 'warn'}">${d.workerW || 'NOT FOUND'}</span>\n`;
+                    html += `SetParent prev:  ${d.setParentPrev} (err: ${d.setParentErr})\n`;
+                    html += `Actual parent:   <span class="${d.parentMatch ? 'ok' : 'warn'}">${d.actualParent}</span>\n`;
+                    html += `Parent class:    <span class="${d.parentClass === 'WorkerW' || d.parentClass === 'Progman' ? 'ok' : 'warn'}">${d.parentClass || 'UNKNOWN'}</span>\n`;
+                    html += `Own class:       ${d.ownClass}\n`;
+                    html += `Parent match:    <span class="${d.parentMatch ? 'ok' : 'warn'}">${d.parentMatch ? 'YES ✓' : 'NO ✗ MISMATCH'}</span>\n`;
+                    html += `Window style:    ${d.windowStyle}\n`;
+                    html += `Screen:          ${d.screenW}x${d.screenH}\n`;
+                    html += `<span class="label">═══ Runtime ═══</span>\n`;
+                    html += `Model:           ${modelLoaded ? '✓ loaded' : '⏳ loading...'}\n`;
+                    html += `IPC msgs:        ${ipcCount}\n`;
+                    html += `Last coords:     (${lastX}, ${lastY})`;
+                    diagEl.innerHTML = html;
+                    return;
+                }
+
+                if (d && d.type === 'mousemove') {
+                    ipcCount++;
+                    lastX = d.x.toFixed(3);
+                    lastY = d.y.toFixed(3);
+                    targetRotationY = d.x * Math.PI * 0.2;
+                    targetRotationX = d.y * Math.PI * 0.2;
+                }
+            });
+        } else {
+            diagEl.innerHTML = '<span class="warn">window.chrome.webview NOT AVAILABLE</span>';
+        }
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        let frameCount = 0;
+        function animate() {
+            requestAnimationFrame(animate);
+            if (model) {
+                model.rotation.y += (targetRotationY - model.rotation.y) * 0.1;
+                model.rotation.x += (targetRotationX - model.rotation.x) * 0.1;
+            }
+            renderer.render(scene, camera);
+
+            // Update IPC counter in overlay every 60 frames
+            frameCount++;
+            if (frameCount % 60 === 0 && ipcCount > 0) {
+                // Only update the IPC lines, don't clobber the diag section
+                const lines = diagEl.innerHTML.split('\n');
+                for (let i = 0; i < lines.length; i++) {
+                    if (lines[i].startsWith('IPC msgs:')) {
+                        lines[i] = `IPC msgs:        ${ipcCount}`;
+                    }
+                    if (lines[i].startsWith('Last coords:')) {
+                        lines[i] = `Last coords:     (${lastX}, ${lastY})`;
+                    }
+                    if (lines[i].includes('loading...') && modelLoaded) {
+                        lines[i] = `Model:           ✓ loaded`;
+                    }
+                }
+                diagEl.innerHTML = lines.join('\n');
+            }
+        }
+        animate();
+    </script>
+</body>
+</html>

@@ -32,6 +32,7 @@ fn send_ipc_message(msg: &serde_json::Value) -> Result<String, String> {
             println!("[IPC] Pipe not found, attempting to spawn renderer...");
             let renderer_path = get_renderer_path();
             Command::new(&renderer_path)
+                .arg(format!("{}", std::process::id()))
                 .creation_flags(CREATE_NO_WINDOW)
                 .spawn()
                 .map_err(|e| format!("Failed to spawn renderer at {:?}: {}", renderer_path, e))?;
@@ -242,4 +243,108 @@ pub fn clear_wallpaper() -> Result<(), String> {
     let msg = json!({"cmd": "clear_wallpaper"});
     send_ipc_message(&msg)?;
     Ok(())
+}
+
+fn get_web_wallpaper_path() -> PathBuf {
+    if let Ok(exe) = std::env::current_exe() {
+        let relative = exe
+            .parent()
+            .unwrap_or(Path::new("."))
+            .join("WebWallpaper.exe");
+        if relative.exists() {
+            return relative;
+        }
+    }
+    PathBuf::from(r"C:\My_Proj\InteractWall\renderer\build\Release\WebWallpaper.exe")
+}
+
+#[command]
+pub fn start_web_wallpaper(model: String, bg_type: String, bg_color: Option<String>, bg_image: Option<String>) -> Result<(), String> {
+    std::thread::spawn(move || {
+        send_quit_command();
+        let _ = Command::new("taskkill").creation_flags(CREATE_NO_WINDOW).args(&["/F", "/IM", "GraffitiRenderer.exe"]).output();
+        let _ = Command::new("taskkill").creation_flags(CREATE_NO_WINDOW).args(&["/F", "/IM", "WebWallpaper.exe"]).output();
+
+        let app_data = match std::env::var("APPDATA") {
+            Ok(v) => v,
+            Err(_) => return,
+        };
+        
+        let mut config_path = PathBuf::from(&app_data);
+        config_path.push("Graffiti");
+        let _ = std::fs::create_dir_all(&config_path);
+        config_path.push("web_config.json");
+
+        let model_filename = Path::new(&model).file_name().unwrap_or_default().to_string_lossy().to_string();
+        let bg_filename = bg_image.clone().map(|p| Path::new(&p).file_name().unwrap_or_default().to_string_lossy().to_string());
+
+        let config_json = json!({
+            "type": "config",
+            "model": model_filename,
+            "backgroundType": bg_type,
+            "backgroundColor": bg_color,
+            "backgroundImage": bg_filename
+        });
+        
+        let _ = std::fs::write(&config_path, config_json.to_string());
+
+        let mut web_assets_dir = PathBuf::from(&app_data);
+        web_assets_dir.push("Graffiti");
+        web_assets_dir.push("web_assets");
+        let _ = std::fs::create_dir_all(&web_assets_dir);
+
+        let path = get_web_wallpaper_path();
+        let bundled_assets_dir = path.parent().unwrap_or(Path::new(".")).join("web_assets");
+        if bundled_assets_dir.exists() {
+            if let Ok(entries) = fs::read_dir(&bundled_assets_dir) {
+                for entry in entries.flatten() {
+                    if let Ok(ft) = entry.file_type() {
+                        if ft.is_file() {
+                            let dest = web_assets_dir.join(entry.file_name());
+                            let _ = fs::copy(entry.path(), &dest);
+                        }
+                    }
+                }
+            }
+        }
+
+        let _ = Command::new(&path)
+            .arg(format!("{}", std::process::id()))
+            .creation_flags(CREATE_NO_WINDOW)
+            .spawn();
+    });
+
+    Ok(())
+}
+
+#[command]
+pub fn stop_web_wallpaper() -> Result<(), String> {
+    let _ = Command::new("taskkill")
+        .creation_flags(CREATE_NO_WINDOW)
+        .args(&["/F", "/IM", "WebWallpaper.exe"])
+        .output();
+    Ok(())
+}
+
+#[command]
+pub fn import_web_asset(file_path: String) -> Result<String, String> {
+    let source = Path::new(&file_path);
+    if !source.exists() {
+        return Err("Source file does not exist".to_string());
+    }
+
+    let file_name = source.file_name().ok_or("Invalid file name")?;
+    let app_data = std::env::var("APPDATA").map_err(|_| "Could not find APPDATA".to_string())?;
+    let mut target_dir = PathBuf::from(app_data);
+    target_dir.push("Graffiti");
+    target_dir.push("web_assets");
+
+    if !target_dir.exists() {
+        std::fs::create_dir_all(&target_dir).map_err(|e| e.to_string())?;
+    }
+
+    let target_path = target_dir.join(file_name);
+    std::fs::copy(source, &target_path).map_err(|e| e.to_string())?;
+
+    Ok(target_path.to_string_lossy().to_string())
 }

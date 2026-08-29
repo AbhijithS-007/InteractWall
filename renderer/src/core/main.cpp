@@ -74,15 +74,31 @@ HWND GetWorkerW() {
         std::cout << "Progman not found!\n";
         return nullptr;
     }
-    // Send the undocumented 0x052C message to Progman to spawn a WorkerW
+
+    WorkerWSearch search;
+    // First attempt: check if WorkerW already exists (e.g., from a previous effect run)
+    EnumWindows(EnumWindowsProc, reinterpret_cast<LPARAM>(&search));
+    
+    if (search.result) {
+        std::cout << "WorkerW already exists. No need to spawn a new one.\n";
+        return search.result;
+    }
+
+    // Only if not found, send the undocumented 0x052C message to Progman to spawn a WorkerW
+    std::cout << "WorkerW not found. Spawning a new one via 0x052C message...\n";
     SendMessageTimeout(progman, 0x052C, 0, 0, SMTO_NORMAL, 1000, nullptr);
     
     // Windows 11 additional fallback messages
     SendMessageTimeout(progman, 0x052C, 0x0000000D, 0, SMTO_NORMAL, 1000, nullptr);
     SendMessageTimeout(progman, 0x052C, 0x0000000D, 1, SMTO_NORMAL, 1000, nullptr);
 
-    WorkerWSearch search;
-    EnumWindows(EnumWindowsProc, reinterpret_cast<LPARAM>(&search));
+    // Second attempt: wait for it to spawn
+    for (int i = 0; i < 20; i++) {
+        search.result = nullptr;
+        EnumWindows(EnumWindowsProc, reinterpret_cast<LPARAM>(&search));
+        if (search.result) break;
+        Sleep(50);
+    }
     
     // Fallback: If we couldn't find the sibling WorkerW, just use Progman.
     // Progman draws the wallpaper. Attaching to it guarantees we render on top of the wallpaper but behind the icons.
@@ -405,7 +421,27 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 // ---------------------------------------------------------------
 // Entry point
 // ---------------------------------------------------------------
-int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE /*hPrevInstance*/, LPSTR /*lpCmdLine*/, int /*nCmdShow*/) {
+#include <thread>
+
+void MonitorParentProcess(DWORD parentPid) {
+    HANDLE hParent = OpenProcess(SYNCHRONIZE, FALSE, parentPid);
+    if (hParent) {
+        std::thread([hParent]() {
+            WaitForSingleObject(hParent, INFINITE);
+            CloseHandle(hParent);
+            ExitProcess(0);
+        }).detach();
+    }
+}
+
+int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE /*hPrevInstance*/, LPSTR lpCmdLine, int /*nCmdShow*/) {
+    if (lpCmdLine && strlen(lpCmdLine) > 0) {
+        DWORD parentPid = static_cast<DWORD>(atoi(lpCmdLine));
+        if (parentPid > 0) {
+            MonitorParentProcess(parentPid);
+        }
+    }
+
     // Initialize COM for WIC
     CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
 
@@ -500,6 +536,8 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE /*hPrevInstance*/, LPSTR /*lpC
     g_pluginContext.processingHeight = processingHeight;
     g_pluginContext.screenWidth = screenWidth;
     g_pluginContext.screenHeight = screenHeight;
+
+    std::cout << "Initialization complete. Entering message loop.\n";
     g_pluginContext.mainRenderTargetView = g_mainRenderTargetView;
 
     char exePath[MAX_PATH];

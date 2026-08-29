@@ -237,3 +237,20 @@ foreach(SHADER ${BO_SHADERS})
         COMMENT "Compiling BrickOutline ${SHADER}"
     )
 endforeach()
+
+# Web Wallpaper
+add_executable(WebWallpaper WIN32 src/web_wallpaper/main.cpp src/power/PowerManager.cpp)
+target_include_directories(WebWallpaper PRIVATE src/web_wallpaper/webview2/build/native/include)
+target_link_libraries(WebWallpaper PRIVATE user32 ole32 advapi32 shell32 shlwapi version dwmapi ${CMAKE_CURRENT_SOURCE_DIR}/src/web_wallpaper/webview2/build/native/x64/WebView2LoaderStatic.lib)
+set_target_properties(WebWallpaper PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/Release"
+    RUNTIME_OUTPUT_DIRECTORY_RELEASE "${CMAKE_BINARY_DIR}/Release"
+    RUNTIME_OUTPUT_DIRECTORY_DEBUG "${CMAKE_BINARY_DIR}/Debug"
+)
+
+# Copy web assets (index.html, Three.js libs) next to WebWallpaper.exe so the installer can bundle them
+add_custom_command(TARGET WebWallpaper POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_FILE_DIR:WebWallpaper>/web_assets"
+    COMMAND ${CMAKE_COMMAND} -E copy_directory "${CMAKE_CURRENT_SOURCE_DIR}/src/web_wallpaper/assets" "$<TARGET_FILE_DIR:WebWallpaper>/web_assets"
+    COMMENT "Copying web assets alongside WebWallpaper.exe"
+)

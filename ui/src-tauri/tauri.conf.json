@@ -38,7 +38,9 @@
     ],
     "resources": {
       "../../renderer/build/Release/GraffitiRenderer.exe": "GraffitiRenderer.exe",
-      "../../renderer/build/Release/plugins": "plugins"
+      "../../renderer/build/Release/plugins": "plugins",
+      "../../renderer/build/Release/WebWallpaper.exe": "WebWallpaper.exe",
+      "../../renderer/build/Release/web_assets": "web_assets"
     }
   }
 }

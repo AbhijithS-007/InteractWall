@@ -59,3 +59,17 @@ export async function fileExists(path: string): Promise<boolean> {
 export async function clearWallpaper(): Promise<void> {
     return invoke('clear_wallpaper');
 }
+
+
+
+export async function startWebWallpaper(model: string, bgType: string, bgColor?: string, bgImage?: string): Promise<void> {
+    return invoke("start_web_wallpaper", { model, bgType, bgColor, bgImage });
+}
+
+export async function stopWebWallpaper(): Promise<void> {
+    return invoke("stop_web_wallpaper");
+}
+
+export async function importWebAsset(filePath: string): Promise<string> {
+    return invoke("import_web_asset", { filePath });
+}

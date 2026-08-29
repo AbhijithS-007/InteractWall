@@ -2,7 +2,8 @@ import { useState, useRef, useEffect } from 'react';
 import { open } from '@tauri-apps/plugin-dialog';
 import { load } from '@tauri-apps/plugin-store';
 import { convertFileSrc } from '@tauri-apps/api/core';
-import { importWallpaper, saveBakedWallpaper, deleteBakedWallpaper, applyWallpaper, listWallpapers, removeEffect, clearWallpaper } from '../ipc';
+import { importWallpaper, saveBakedWallpaper, deleteBakedWallpaper, listWallpapers, clearWallpaper } from '../ipc';
+import { applyWallpaper, removeEffect } from '../wallpaperManager';
 import { saveActiveSession } from '../store';
 import { Plus, X, Image as ImageIcon, Save, Upload, Check, Undo2, Redo2, FolderOpen, Trash2, Info } from 'lucide-react';
 
@@ -834,7 +835,9 @@ export default function Gallery() {
     try {
       setIsGeneratingDepth(true);
       const bytes = await bakeCanvas();
-      const hashBuffer = await crypto.subtle.digest('SHA-256', bytes);
+      const isShared = Object.prototype.toString.call(bytes.buffer) === '[object SharedArrayBuffer]';
+      const dataForDigest = isShared ? new Uint8Array(bytes) : bytes;
+      const hashBuffer = await crypto.subtle.digest('SHA-256', dataForDigest);
       const hashArray = Array.from(new Uint8Array(hashBuffer));
       const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
       await saveBakedWallpaper(`gallery-${hashHex}.png`, bytes);

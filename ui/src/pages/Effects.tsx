@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
-import { setEffect, removeEffect, setSetting, setQualityTier, applyWallpaper, importWallpaper, generateDepthMap, getStatus, listWallpapers, fileExists } from '../ipc';
+import { setSetting, setQualityTier, importWallpaper, generateDepthMap, getStatus, listWallpapers, fileExists } from '../ipc';
+import { applyWallpaper, setEffect, removeEffect } from '../wallpaperManager';
 import { saveWallpaperPairing, loadEffectSettings, saveEffectSettings, saveActiveSession, getActiveSession } from '../store';
 import { open } from '@tauri-apps/plugin-dialog';
 import { convertFileSrc } from '@tauri-apps/api/core';

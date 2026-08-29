@@ -1,5 +1,5 @@
 import { BrowserRouter as Router, Routes, Route, NavLink, Navigate } from 'react-router-dom';
-import { Wand2, Settings as SettingsIcon, Info, Layers } from 'lucide-react';
+import { Wand2, Settings as SettingsIcon, Info, Layers, Box } from 'lucide-react';
 import './index.css';
 
 // Pages
@@ -8,8 +8,10 @@ import Settings from './pages/Settings';
 import { useEffect } from 'react';
 import About from './pages/About';
 import Gallery from './pages/Gallery';
+import WebWallpaper from './pages/WebWallpaper';
 import { loadSettings, applySettingsToBackend, getActiveSession, loadEffectSettings } from './store';
-import { applyWallpaper, setEffect, setSetting, isAutostart } from './ipc';
+import { setSetting, isAutostart } from './ipc';
+import { applyWallpaper, setEffect } from './wallpaperManager';
 
 function App() {
   useEffect(() => {
@@ -58,6 +60,9 @@ function App() {
           <NavLink to="/about" className={({isActive}) => `nav-link ${isActive ? 'active' : ''}`}>
             <Info size={18} /> About
           </NavLink>
+          <NavLink to="/web-wallpaper" className={({isActive}) => `nav-link ${isActive ? 'active' : ''}`}>
+            <Box size={18} /> 3D Web Mode
+          </NavLink>
         </div>
         <div style={{width: '150px'}}></div> {/* Spacer for centering capsule */}
       </div>
@@ -69,6 +74,7 @@ function App() {
           <Route path="/effects" element={<Effects />} />
           <Route path="/settings" element={<Settings />} />
           <Route path="/about" element={<About />} />
+          <Route path="/web-wallpaper" element={<WebWallpaper />} />
         </Routes>
       </div>
     </Router>

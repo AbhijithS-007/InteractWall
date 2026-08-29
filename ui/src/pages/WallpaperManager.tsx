@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { open } from '@tauri-apps/plugin-dialog';
-import { importWallpaper, listWallpapers, applyWallpaper, setEffect, setSetting } from '../ipc';
+import { importWallpaper, listWallpapers, setSetting } from '../ipc';
+import { applyWallpaper, setEffect } from '../wallpaperManager';
 import { getWallpaperPairing, saveActiveSession } from '../store';
 
 export default function WallpaperManager() {
